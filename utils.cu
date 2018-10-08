@@ -61,6 +61,11 @@ float trace(
   graphblas::Matrix<float>* B
 )
 {
+    A->matrix_.sparse_.gpuToCpu();
+    B->matrix_.sparse_.gpuToCpu();
+    // A->matrix_.sparse_.cpuToGpu();
+    // B->matrix_.sparse_.cpuToGpu();
+
     int num_rows;
     A->nrows(&num_rows);
 
@@ -70,13 +75,14 @@ float trace(
     graphblas::Matrix<float> flat_B(num_rows * num_rows, 1);
     flatten(B, &flat_B, true);
 
-    graphblas::Matrix<float> dot_val(1, 1);
-    graphblas::Descriptor dot_val_desc;
-    dot(&flat_A, &flat_B, &dot_val, &dot_val_desc);
+    graphblas::Matrix<float> trace_mtx(1, 1);
+    graphblas::Descriptor trace_mtx_desc;
+    dot(&flat_A, &flat_B, &trace_mtx, &trace_mtx_desc);
+    trace_mtx.matrix_.sparse_.gpuToCpu();
 
-    float * h_trace_val = (float*)malloc(1 * sizeof(float));
-    cudaMemcpy(h_trace_val, dot_val.matrix_.sparse_.d_csrVal_, 1 * sizeof(float), cudaMemcpyDeviceToHost);
-    std::cerr << "h_trace_val=" << h_trace_val[0] << std::endl;
+    // float * h_trace_val = (float*)malloc(1 * sizeof(float));
+    // cudaMemcpy(h_trace_val, trace_mtx.matrix_.sparse_.d_csrVal_, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cerr << "h_trace_val=" << trace_mtx.matrix_.sparse_.h_csrVal_[0] << std::endl;
 
-    return h_trace_val[0];
+    return trace_mtx.matrix_.sparse_.h_csrVal_[0];
 }

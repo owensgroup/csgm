@@ -15,7 +15,7 @@
 #include "auction.cu"
 #include "utils.cu"
 
-#define NUM_SEEDS 5
+#define NUM_SEEDS 100
 
 int main( int argc, char** argv )
 {
@@ -48,71 +48,80 @@ int main( int argc, char** argv )
   graphblas::Matrix<float> B(num_rows, num_cols);
   B.build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
 
-  // A.matrix_.sparse_.gpuToCpu();
-  // B.matrix_.sparse_.gpuToCpu();
-  // A.matrix_.sparse_.cpuToGpu();
-  // B.matrix_.sparse_.cpuToGpu();
-  trace(&A, &B);
+  // Creating P
+  std::cerr << "creating P" << std::endl;
+  for(graphblas::Index i = 0; i < NUM_SEEDS; i++) {
+    p_row_indices.push_back(i);
+    p_col_indices.push_back(i);
+    p_values.push_back(1.0f);
+  }
+  graphblas::Matrix<float> P(num_rows, num_cols);
+  P.build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
 
-  // // Creating P
-  // std::cerr << "creating P" << std::endl;
-  // for(graphblas::Index i = 0; i < NUM_SEEDS; i++) {
-  //   p_row_indices.push_back(i);
-  //   p_col_indices.push_back(i);
-  //   p_values.push_back(1.0f);
-  // }
-  // graphblas::Matrix<float> P(num_rows, num_cols);
-  // P.build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
+  // ----------------------------------------------------------------------
+  // Run SGM
 
-  // // ----------------------------------------------------------------------
-  // // Running SGM
+  // AP = A.dot(P)
+  graphblas::Matrix<float> AP(num_rows, num_cols);
+  graphblas::Descriptor AP_desc;
+  dot(&A, &P, &AP, &AP_desc);
 
-  // // AP = A.dot(P)
-  // graphblas::Matrix<float> AP(num_rows, num_cols);
-  // graphblas::Descriptor AP_desc;
-  // dot(&A, &P, &AP, &AP_desc);
+  // APB = AP.dot(B)
+  graphblas::Matrix<float> APB(num_rows, num_cols);
+  graphblas::Descriptor APB_desc;
+  dot(&AP, &B, &APB, &APB_desc);
 
-  // // APB = AP.dot(B)
-  // graphblas::Matrix<float> APB(num_rows, num_cols);
-  // graphblas::Descriptor APB_desc;
-  // dot(&AP, &B, &APB, &APB_desc);
+  // solve_lap
+  int APB_num_edges; APB.nvals(&APB_num_edges);
+  int* h_person2item = (int *)malloc(sizeof(int) * num_rows);
+  run_auction( // !! Extracts data, which isn't necessary
+      num_rows,
+      APB_num_edges,
 
-  // // solve_lap
-  // int APB_num_edges; APB.nvals(&APB_num_edges);
-  // int* h_person2item = (int *)malloc(sizeof(int) * num_rows);
-  // run_auction( // !! Extracts data, which isn't necessary
-  //     num_rows,
-  //     APB_num_edges,
+      APB.matrix_.sparse_.d_csrVal_,
+      APB.matrix_.sparse_.d_csrRowPtr_,
+      APB.matrix_.sparse_.d_csrColInd_,
 
-  //     APB.matrix_.sparse_.d_csrVal_,
-  //     APB.matrix_.sparse_.d_csrRowPtr_,
-  //     APB.matrix_.sparse_.d_csrColInd_,
+      h_person2item,
 
-  //     h_person2item,
+      0.1,
+      0.1,
+      0.0,
 
-  //     0.1,
-  //     0.1,
-  //     0.0,
+      1,
+      0
+  );
 
-  //     1,
-  //     0
-  // );
+  // Build T matrix from `h_person2item` -- could be faster?
+  for(graphblas::Index i = 0; i < num_rows; i++) {
+    t_row_indices.push_back(i);
+    t_col_indices.push_back(h_person2item[i]);
+    t_values.push_back(1.0f);
+  }
+  graphblas::Matrix<float> T(num_rows, num_cols);
+  T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
 
-  // // Build T matrix from `h_person2item` -- could be faster?
-  // for(graphblas::Index i = 0; i < num_rows; i++) {
-  //   t_row_indices.push_back(i);
-  //   t_col_indices.push_back(h_person2item[i]);
-  //   t_values.push_back(1.0f);
-  // }
-  // graphblas::Matrix<float> T(num_rows, num_cols);
-  // T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
+  // AT = A.dot(T)
+  graphblas::Matrix<float> AT(num_rows, num_cols);
+  graphblas::Descriptor AT_desc;
+  dot(&A, &T, &AT, &AT_desc);
 
-  // // AT = A.dot(T)
-  // graphblas::Matrix<float> AT(num_rows, num_cols);
-  // graphblas::Descriptor AT_desc;
-  // dot(&A, &T, &AT, &AP_desc);
+  // PB = P.dot(B)
+  std::cerr << "compute PB" << std::endl;
+  graphblas::Matrix<float> PB(num_rows, num_cols);
+  graphblas::Descriptor PB_desc;
+  dot(&P, &B, &PB, &PB_desc);
 
+  // TB = T.dot(B)
+  graphblas::Matrix<float> TB(num_rows, num_cols);
+  graphblas::Descriptor TB_desc;
+  dot(&T, &B, &TB, &TB_desc);
 
+  std::cerr << "compute APPB_trace" << std::endl;
+  float APPB_trace = trace(&AP, &PB);
+  float APTB_trace = trace(&AP, &TB);
+  float ATPB_trace = trace(&AT, &PB);
+  float ATTB_trace = trace(&AT, &TB);
 
   // // ----------------------------------------------------------------------
   // // Read results
