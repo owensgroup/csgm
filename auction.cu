@@ -26,35 +26,15 @@
 
 #include "auction_kernel_csr.cu"
 
-
-int load_data(float *raw_data) {
-    std::ifstream input_file("graph", std::ios_base::in);
-
-    std::cerr << "load_data: start" << std::endl;
-    int i = 0;
-    float val;
-    while(input_file >> val) {
-        raw_data[i] = val;
-        i++;
-        if(i > MAX_NODES * MAX_NODES) {
-            std::cerr << "load_data: ERROR -- data file too large" << std::endl;
-            return -1;
-        }
-    }
-    std::cerr << "load_data: finish" << std::endl;
-    return (int)sqrt(i);
-}
-
-
 int run_auction(
     int    num_nodes,
     int    num_edges,
 
-    float* h_data,      // data
-    int*   h_offsets,   // offsets for items
-    int*   h_columns,
+    float* d_data,      // data
+    int*   d_offsets,   // offsets for items
+    int*   d_columns,
 
-    int*   h_person2item, // results
+    int*   d_person2item, // results
 
     float auction_max_eps,
     float auction_min_eps,
@@ -74,11 +54,6 @@ int run_auction(
     // --
     // Declare variables
 
-    float* d_data;
-    int*   d_offsets;
-    int*   d_columns;
-
-    int* d_person2item;
     int* d_item2person;
 
     float* d_bids;
@@ -92,11 +67,7 @@ int run_auction(
 
     // --
     // Allocate device memory
-    cudaMalloc((void **)&d_data,    num_edges * sizeof(float));
-    cudaMalloc((void **)&d_columns, num_edges * sizeof(float));
-    cudaMalloc((void **)&d_offsets, (num_nodes + 1) * sizeof(int));
 
-    cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
     cudaMalloc((void **)&d_item2person, num_nodes * sizeof(int));
 
     cudaMalloc((void **)&d_bids,    num_nodes * num_nodes * sizeof(float));
@@ -109,10 +80,6 @@ int run_auction(
 
     // --
     // Copy from host to device
-
-    cudaMemcpy(d_data,    h_data,    num_edges       * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_columns, h_columns, num_edges       * sizeof(int),   cudaMemcpyHostToDevice);
-    cudaMemcpy(d_offsets, h_offsets, (num_nodes + 1) * sizeof(int),   cudaMemcpyHostToDevice);
 
     curandGenerator_t gen;
     curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
@@ -174,7 +141,6 @@ int run_auction(
                 cudaThreadSynchronize();
 
                 cudaMemcpy(&h_numAssign, d_numAssign, sizeof(int) * 1, cudaMemcpyDeviceToHost);
-                // std::cerr << "h_numAssign=" << h_numAssign << std::endl;
             }
             if(verbose) {
                 std::cerr << "counter=" << counter << std::endl;
@@ -200,13 +166,6 @@ int run_auction(
         cudaThreadSynchronize();
      }
 
-    // Read out results
-    cudaMemcpy(h_person2item, d_person2item, sizeof(int) * num_nodes, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_data);
-    cudaFree(d_columns);
-    cudaFree(d_offsets);
-    cudaFree(d_person2item);
     cudaFree(d_item2person);
     cudaFree(d_bids);
     cudaFree(d_prices);

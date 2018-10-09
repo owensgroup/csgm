@@ -30,7 +30,6 @@ __global__ void __flatten(int* row_ptr, int* cols, int num_rows) {
 }
 
 void flatten(graphblas::Matrix<float>* A, graphblas::Matrix<float>* flat, bool transpose) {
-
     int num_edges; A->nvals(&num_edges);
     int num_rows;  A->nrows(&num_rows);
 
@@ -58,13 +57,12 @@ void flatten(graphblas::Matrix<float>* A, graphblas::Matrix<float>* flat, bool t
 
 float trace(
   graphblas::Matrix<float>* A,
-  graphblas::Matrix<float>* B
+  graphblas::Matrix<float>* B,
+  graphblas::Descriptor* desc
 )
 {
     A->matrix_.sparse_.gpuToCpu();
     B->matrix_.sparse_.gpuToCpu();
-    // A->matrix_.sparse_.cpuToGpu();
-    // B->matrix_.sparse_.cpuToGpu();
 
     int num_rows;
     A->nrows(&num_rows);
@@ -76,13 +74,36 @@ float trace(
     flatten(B, &flat_B, true);
 
     graphblas::Matrix<float> trace_mtx(1, 1);
-    graphblas::Descriptor trace_mtx_desc;
-    dot(&flat_A, &flat_B, &trace_mtx, &trace_mtx_desc);
+    dot(&flat_A, &flat_B, &trace_mtx, desc);
     trace_mtx.matrix_.sparse_.gpuToCpu();
-
-    // float * h_trace_val = (float*)malloc(1 * sizeof(float));
-    // cudaMemcpy(h_trace_val, trace_mtx.matrix_.sparse_.d_csrVal_, 1 * sizeof(float), cudaMemcpyDeviceToHost);
-    std::cerr << "h_trace_val=" << trace_mtx.matrix_.sparse_.h_csrVal_[0] << std::endl;
-
     return trace_mtx.matrix_.sparse_.h_csrVal_[0];
+}
+
+
+float sum_values(
+  float* d_in,
+  int num_items
+)
+{
+
+  // float* h_in = (float*)malloc(num_items * sizeof(float));
+  // cudaMemcpy(h_in, d_in, num_items * sizeof(float), cudaMemcpyDeviceToHost);
+  // for(int i = 0; i < 10; i ++ ) {
+  //   std::cerr << "h_in[" << i << "]=" << h_in[i] << std::endl;
+  // }
+  // std::cerr << "sum_values: num_items=" << num_items << std::endl;
+
+  float* d_out;
+  cudaMalloc((void**)&d_out, 1 * sizeof(float));
+
+  void   *d_temp_storage = NULL;
+  size_t temp_storage_bytes = 0;
+  cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in, d_out, num_items);
+  cudaMalloc(&d_temp_storage, temp_storage_bytes);
+  cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in, d_out, num_items);
+
+  float* h_sum = (float*)malloc(1 * sizeof(float));
+  cudaMemcpy(h_sum, d_out, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+  // std::cerr << "h_sum[0]=" << h_sum[0] << std::endl;
+  return h_sum[0];
 }

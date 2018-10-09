@@ -5,10 +5,12 @@ ARCH=\
   -gencode arch=compute_60,code=compute_60 \
   -gencode arch=compute_60,code=sm_60
 
+OPTIONS=-O3 -use_fast_math
+
 all: csgm
 
 csgm: csgm.cu
-	nvcc -g $(ARCH) -w -std=c++11 -o csgm \
+	nvcc -g $(ARCH) $(OPTIONS) -w -std=c++11 -o csgm \
 		csgm.cu \
 	    $(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpucontext.cu \
 	    $(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpuutil.cpp \
