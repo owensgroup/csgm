@@ -141,12 +141,11 @@ int main( int argc, char** argv )
   graphblas::reduce<float,float,float>(&AT_rowsum, GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), &AT, &desc);
   graphblas::reduce<float,float,float>(&B_rowsum,  GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), &B,  &desc);
 
-  float* h_B_rowsum = (float*)malloc(num_rows * sizeof(float));
-  cudaMemcpy(h_B_rowsum, B_rowsum.vector_.sparse_.d_val_, 10 * sizeof(float), cudaMemcpyDeviceToHost);
-  for(int i = 0; i < 10; i++) {
-    std::cerr << "h_B_rowsum[" << i << "]=" << h_B_rowsum[i] << std::endl;
-  }
-
+  // float* h_B_rowsum = (float*)malloc(num_rows * sizeof(float));
+  // cudaMemcpy(h_B_rowsum, B_rowsum.vector_.sparse_.d_val_, 10 * sizeof(float), cudaMemcpyDeviceToHost);
+  // for(int i = 0; i < 10; i++) {
+  //   std::cerr << "h_B_rowsum[" << i << "]=" << h_B_rowsum[i] << std::endl;
+  // }
 
   graphblas::Vector<float> PAP_sum(num_rows);
   graphblas::Vector<float> PAT_sum(num_rows);
@@ -166,26 +165,26 @@ int main( int argc, char** argv )
   // !!!!!!!!!!!!!!!!!!!!!
   // !!! This is wrong, but works for the first iteration, because P is symmetric at that point
   // !!! Should be doing `vxm` -- need Carl's help
-  std::cerr << "**** BP_sum *****" << std::endl;
+  // std::cerr << "**** BP_sum *****" << std::endl;
   graphblas::Vector<float> BP_sum(num_rows);
   graphblas::mxv<float, float, float, float>(&BP_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &P, &B_rowsum, &desc);
 
-  float* h_BP_sum = (float*)malloc(num_rows * sizeof(float));
-  cudaMemcpy(h_BP_sum, BP_sum.vector_.dense_.d_val_, num_rows * sizeof(float), cudaMemcpyDeviceToHost);
-  for(int i = 0; i < 10; i++) {
-    std::cerr << "h_BP_sum[" << i << "]=" << h_BP_sum[i] << std::endl;
-  }
-  std::cerr << "**** done *****" << std::endl;
+  // float* h_BP_sum = (float*)malloc(num_rows * sizeof(float));
+  // cudaMemcpy(h_BP_sum, BP_sum.vector_.dense_.d_val_, num_rows * sizeof(float), cudaMemcpyDeviceToHost);
+  // for(int i = 0; i < 10; i++) {
+  //   std::cerr << "h_BP_sum[" << i << "]=" << h_BP_sum[i] << std::endl;
+  // }
+  // std::cerr << "**** done *****" << std::endl;
 
-  std::cerr << "**** BP_sum2 *****" << std::endl;
-  graphblas::Vector<float> BP_sum2(num_rows);
-  graphblas::vxm<float, float, float, float>(&BP_sum2, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &B_rowsum, &P, &desc);
-  float* h_BP_sum2 = (float*)malloc(num_rows * sizeof(float));
-  cudaMemcpy(h_BP_sum2, BP_sum2.vector_.sparse_.d_val_, 101 * sizeof(float), cudaMemcpyDeviceToHost);
-  for(int i = 0; i < 101; i++) {
-    std::cerr << "h_BP_sum2[" << i << "]=" << h_BP_sum2[i] << std::endl;
-  }
-  std::cerr << "**** done *****" << std::endl;
+  // std::cerr << "**** BP_sum2 *****" << std::endl;
+  // graphblas::Vector<float> BP_sum2(num_rows);
+  // graphblas::vxm<float, float, float, float>(&BP_sum2, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &B_rowsum, &P, &desc);
+  // float* h_BP_sum2 = (float*)malloc(num_rows * sizeof(float));
+  // cudaMemcpy(h_BP_sum2, BP_sum2.vector_.sparse_.d_val_, 101 * sizeof(float), cudaMemcpyDeviceToHost);
+  // for(int i = 0; i < 101; i++) {
+  //   std::cerr << "h_BP_sum2[" << i << "]=" << h_BP_sum2[i] << std::endl;
+  // }
+  // std::cerr << "**** done *****" << std::endl;
 
   graphblas::Vector<float> BT_sum(num_rows);
   graphblas::mxv<float, float, float, float>(&BT_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &T, &B_rowsum, &desc);
