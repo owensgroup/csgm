@@ -44,6 +44,10 @@ int run_auction(
     int verbose
 )
 {
+    float* h_data    = (float*)malloc(num_edges * sizeof(float));
+    int*   h_offsets = (int*)malloc((num_nodes + 1) * sizeof(int));
+    int*   h_columns = (int*)malloc(num_edges * sizeof(int));
+
     // --
     // CUDA options
 
@@ -58,25 +62,22 @@ int run_auction(
 
     float* d_bids;
     float* d_prices;
-    int*   d_bidders; // unused
+    int*   d_bidders;
     int*   d_sbids;
-
-    int  h_numAssign;
-    int* d_numAssign = 0;
+    int    h_numAssign;
+    int*   d_numAssign;
     float* d_rand;
 
     // --
     // Allocate device memory
 
-    cudaMalloc((void **)&d_item2person, num_nodes * sizeof(int));
-
-    cudaMalloc((void **)&d_bids,    num_nodes * num_nodes * sizeof(float));
-    cudaMalloc((void **)&d_prices,  num_nodes * sizeof(float));
-    cudaMalloc((void **)&d_bidders, num_nodes * num_nodes * sizeof(int)); // unused
-    cudaMalloc((void **)&d_sbids,   num_nodes * sizeof(int));
-
-    cudaMalloc((void **)&d_numAssign, 1 * sizeof(int)) ;
-    cudaMalloc((void **)&d_rand,      num_nodes * num_nodes * sizeof(float)) ;
+    cudaMalloc((void **)&d_numAssign,   1                     * sizeof(int)) ;
+    cudaMalloc((void **)&d_item2person, num_nodes             * sizeof(int));
+    cudaMalloc((void **)&d_prices,      num_nodes             * sizeof(float));
+    cudaMalloc((void **)&d_sbids,       num_nodes             * sizeof(int));
+    cudaMalloc((void **)&d_bids,        num_nodes * num_nodes * sizeof(float));
+    cudaMalloc((void **)&d_bidders,     num_nodes * num_nodes * sizeof(int)); // unused
+    cudaMalloc((void **)&d_rand,        num_nodes * num_nodes * sizeof(float)) ;
 
     // --
     // Copy from host to device
@@ -87,7 +88,6 @@ int run_auction(
     curandGenerateUniform(gen, d_rand, num_nodes * num_nodes);
 
     for(int run_num = 0; run_num < num_runs; run_num++) {
-
         cudaMemset(d_prices, 0.0, num_nodes * sizeof(float));
 
         // Start timer
@@ -141,6 +141,7 @@ int run_auction(
                 cudaThreadSynchronize();
 
                 cudaMemcpy(&h_numAssign, d_numAssign, sizeof(int) * 1, cudaMemcpyDeviceToHost);
+                // std::cerr << "h_numAssign=" << h_numAssign << std::endl;
             }
             if(verbose) {
                 std::cerr << "counter=" << counter << std::endl;

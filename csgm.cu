@@ -59,186 +59,171 @@ int main( int argc, char** argv )
     p_col_indices.push_back(i);
     p_values.push_back(1.0f);
   }
-  graphblas::Matrix<float> P(num_rows, num_cols);
-  P.build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
+  graphblas::Matrix<float> _P(num_rows, num_cols);
+  _P.build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
+  graphblas::Matrix<float>* P = &_P;
 
   // ----------------------------------------------------------------------
   // Run SGM
 
-  // AP = A.dot(P)
-  graphblas::Matrix<float> AP(num_rows, num_cols);
-  dot(&A, &P, &AP, &desc);
+  graphblas::Matrix<float>  _AP(num_rows, num_cols);
+  graphblas::Matrix<float> _APB(num_rows, num_cols);
+  graphblas::Matrix<float>    T(num_rows, num_cols);
+  graphblas::Matrix<float>   AT(num_rows, num_cols);
+  graphblas::Matrix<float>  ATB(num_rows, num_cols);
+  graphblas::Matrix<float>   PB(num_rows, num_cols);
+  graphblas::Matrix<float>   TB(num_rows, num_cols);
 
-  // APB = AP.dot(B)
-  graphblas::Matrix<float> APB(num_rows, num_cols);
-  dot(&AP, &B, &APB, &desc);
+  easy_mxm(&_AP, &A, P, &desc);   graphblas::Matrix<float>* AP = &_AP;
+  easy_mxm(&_APB, AP, &B, &desc); graphblas::Matrix<float>* APB = &_APB;
 
-  // solve_lap
-  // std::cerr << "run_auction" << std::endl;
-  // int APB_num_edges; APB.nvals(&APB_num_edges);
-  // APB.matrix_.sparse_.gpuToCpu();
-  // int* d_person2item;
-  // cudaMalloc((void **)&d_person2item, num_rows * sizeof(int));
-  // run_auction(
-  //     num_rows,
-  //     APB_num_edges,
+  int* d_person2item;
+  cudaMalloc((void **)&d_person2item, num_rows * sizeof(int));
 
-  //     APB.matrix_.sparse_.d_csrVal_,
-  //     APB.matrix_.sparse_.d_csrRowPtr_,
-  //     APB.matrix_.sparse_.d_csrColInd_,
+  for(int iter = 0; iter < 20; iter++) {
+    std::cerr << "******** iter=" << iter << "**********" << std::endl;
 
-  //     d_person2item,
+    std::cerr << "\t Solve LAP" << std::endl;
+    int APB_num_edges; APB->nvals(&APB_num_edges);
+    run_auction(
+        num_rows,
+        APB_num_edges,
 
-  //     0.1,
-  //     0.1,
-  //     0.0,
+        APB->matrix_.sparse_.d_csrVal_,
+        APB->matrix_.sparse_.d_csrRowPtr_,
+        APB->matrix_.sparse_.d_csrColInd_,
 
-  //     1,
-  //     1
-  // );
-  // int* h_person2item = (int *)malloc(num_rows * sizeof(int));
-  // cudaMemcpy(h_person2item, d_person2item, num_rows * sizeof(int), cudaMemcpyDeviceToHost);
+        d_person2item,
 
-  // Build T matrix from `h_person2item` -- could be faster?
-  for(graphblas::Index i = 0; i < num_rows; i++) {
-    t_row_indices.push_back(i);
-    // t_col_indices.push_back(h_person2item[i]);
-    t_col_indices.push_back(i);
-    t_values.push_back(1.0f);
-  }
-  graphblas::Matrix<float> T(num_rows, num_cols);
-  T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
+        0.1,
+        0.1,
+        0.0,
 
-  std::cerr << "AT = A.dot(T)" << std::endl;
-  graphblas::Matrix<float> AT(num_rows, num_cols);
-  dot(&A, &T, &AT, &desc);
+        1,
+        1
+    );
+    int* h_person2item = (int *)malloc(num_rows * sizeof(int));
+    cudaMemcpy(h_person2item, d_person2item, num_rows * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
-  std::cerr << "PB = P.dot(B)" << std::endl;
-  graphblas::Matrix<float> PB(num_rows, num_cols);
-  dot(&P, &B, &PB, &desc);
+    // Build T matrix from `h_person2item` -- could be faster?
+    T.clear(); t_row_indices.clear(); t_col_indices.clear(); t_values.clear();
+    for(graphblas::Index i = 0; i < num_rows; i++) {
+      t_row_indices.push_back(i);
+      t_col_indices.push_back(h_person2item[i]);
+      t_values.push_back(1.0f);
+    }
+    T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
 
-  std::cerr << "TB = T.dot(B)" << std::endl;
-  graphblas::Matrix<float> TB(num_rows, num_cols);
-  dot(&T, &B, &TB, &desc);
+    std::cerr << "\t Matrix multiply" << std::endl;
 
-  std::cerr << "computing traces: start" << std::endl;
-  float APPB_trace = trace(&AP, &PB, &desc);
-  float APTB_trace = trace(&AP, &TB, &desc);
-  float ATPB_trace = trace(&AT, &PB, &desc);
-  float ATTB_trace = trace(&AT, &TB, &desc);
-  std::cerr << "computing traces: done" << std::endl;
+    std::cerr << "\t AT" << std::endl;
+    AT.clear();  easy_mxm(&AT,   &A, &T,  &desc);
+    std::cerr << "\t ATB" << std::endl;
+    ATB.clear(); easy_mxm(&ATB, &AT, &B,  &desc);
+    std::cerr << "\t AP" << std::endl;
+    PB.clear();  easy_mxm(&PB,    P, &B,  &desc);
+    std::cerr << "\t TB" << std::endl;
+    TB.clear();  easy_mxm(&TB,   &T, &B,  &desc);
 
-  float T_sum = (float)num_rows;
+    std::cerr << "\t Check convergence" << std::endl;
+    float APPB_trace = trace(AP, &PB, &desc);
+    float APTB_trace = trace(AP, &TB, &desc);
+    float ATPB_trace = trace(&AT, &PB, &desc);
+    float ATTB_trace = trace(&AT, &TB, &desc);
 
-  int P_num_values; P.nvals(&P_num_values);
-  float P_sum = sum_values(P.matrix_.sparse_.d_csrVal_, P_num_values);
+    float T_sum = (float)num_rows;
+    int P_num_values; P->nvals(&P_num_values);
+    float P_sum = sum_reduce(P->matrix_.sparse_.d_csrVal_, P_num_values);
 
-  graphblas::Vector<float> AP_rowsum(num_rows);
-  graphblas::Vector<float> AT_rowsum(num_rows);
-  graphblas::Vector<float> B_rowsum(num_rows);
+    graphblas::Vector<float> AP_rowsum(num_rows); rowsum(&AP_rowsum,  AP, &desc);
+    graphblas::Vector<float> AT_rowsum(num_rows); rowsum(&AT_rowsum, &AT, &desc);
+    graphblas::Vector<float> B_rowsum(num_rows);  rowsum( &B_rowsum,  &B, &desc);
 
-  graphblas::reduce<float,float,float>(&AP_rowsum, GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), &AP, &desc);
-  graphblas::reduce<float,float,float>(&AT_rowsum, GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), &AT, &desc);
-  graphblas::reduce<float,float,float>(&B_rowsum,  GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), &B,  &desc);
+    graphblas::Vector<float> PAP_sum(num_rows); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
+    graphblas::Vector<float> PAT_sum(num_rows); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
+    graphblas::Vector<float> TAP_sum(num_rows); easy_mxv(&TAP_sum, &T, &AP_rowsum, &desc);
+    graphblas::Vector<float> TAT_sum(num_rows); easy_mxv(&TAT_sum, &T, &AT_rowsum, &desc);
 
-  // float* h_B_rowsum = (float*)malloc(num_rows * sizeof(float));
-  // cudaMemcpy(h_B_rowsum, B_rowsum.vector_.sparse_.d_val_, 10 * sizeof(float), cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < 10; i++) {
-  //   std::cerr << "h_B_rowsum[" << i << "]=" << h_B_rowsum[i] << std::endl;
-  // }
+    graphblas::Vector<float> BP_sum(num_rows); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
+    graphblas::Vector<float> BT_sum(num_rows); easy_vxm(&BT_sum, &B_rowsum, &T, &desc);
 
-  graphblas::Vector<float> PAP_sum(num_rows);
-  graphblas::Vector<float> PAT_sum(num_rows);
-  graphblas::Vector<float> TAP_sum(num_rows);
-  graphblas::Vector<float> TAT_sum(num_rows);
+    float PAP_sum_sum = sum_reduce(PAP_sum.vector_.dense_.d_val_, num_rows);
+    float PAT_sum_sum = sum_reduce(PAT_sum.vector_.dense_.d_val_, num_rows);
+    float TAP_sum_sum = sum_reduce(TAP_sum.vector_.dense_.d_val_, num_rows);
+    float TAT_sum_sum = sum_reduce(TAT_sum.vector_.dense_.d_val_, num_rows);
+    float BP_sum_sum  = sum_reduce(BP_sum.vector_.sparse_.d_val_, num_rows);
+    float BT_sum_sum  = sum_reduce(BT_sum.vector_.sparse_.d_val_, num_rows);
 
-  graphblas::mxv<float, float, float, float>(&PAP_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &P, &AP_rowsum, &desc);
-  graphblas::mxv<float, float, float, float>(&PAT_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &P, &AT_rowsum, &desc);
-  graphblas::mxv<float, float, float, float>(&TAP_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &T, &AP_rowsum, &desc);
-  graphblas::mxv<float, float, float, float>(&TAT_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &T, &AT_rowsum, &desc);
+    float ps_grad_P  = 4 * APPB_trace + (float)num_rows * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
+    float ps_grad_T  = 4 * APTB_trace + (float)num_rows * T_sum - 2 * (TAP_sum_sum + BT_sum_sum);
+    float ps_gradt_P = 4 * ATPB_trace + (float)num_rows * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
+    float ps_gradt_T = 4 * ATTB_trace + (float)num_rows * T_sum - 2 * (TAT_sum_sum + BT_sum_sum);
 
-  float PAP_sum_sum = sum_values(PAP_sum.vector_.dense_.d_val_, num_rows);
-  float PAT_sum_sum = sum_values(PAT_sum.vector_.dense_.d_val_, num_rows);
-  float TAP_sum_sum = sum_values(TAP_sum.vector_.dense_.d_val_, num_rows);
-  float TAT_sum_sum = sum_values(TAT_sum.vector_.dense_.d_val_, num_rows);
+    // --
+    // Check convergence
 
-  // !!!!!!!!!!!!!!!!!!!!!
-  // !!! This is wrong, but works for the first iteration, because P is symmetric at that point
-  // !!! Should be doing `vxm` -- need Carl's help
-  // std::cerr << "**** BP_sum *****" << std::endl;
-  graphblas::Vector<float> BP_sum(num_rows);
-  graphblas::mxv<float, float, float, float>(&BP_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &P, &B_rowsum, &desc);
+    float c = ps_grad_P;
+    float d = ps_gradt_P + ps_grad_T;
+    float e = ps_gradt_T;
 
-  // float* h_BP_sum = (float*)malloc(num_rows * sizeof(float));
-  // cudaMemcpy(h_BP_sum, BP_sum.vector_.dense_.d_val_, num_rows * sizeof(float), cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < 10; i++) {
-  //   std::cerr << "h_BP_sum[" << i << "]=" << h_BP_sum[i] << std::endl;
-  // }
-  // std::cerr << "**** done *****" << std::endl;
-
-  // std::cerr << "**** BP_sum2 *****" << std::endl;
-  // graphblas::Vector<float> BP_sum2(num_rows);
-  // graphblas::vxm<float, float, float, float>(&BP_sum2, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &B_rowsum, &P, &desc);
-  // float* h_BP_sum2 = (float*)malloc(num_rows * sizeof(float));
-  // cudaMemcpy(h_BP_sum2, BP_sum2.vector_.sparse_.d_val_, 101 * sizeof(float), cudaMemcpyDeviceToHost);
-  // for(int i = 0; i < 101; i++) {
-  //   std::cerr << "h_BP_sum2[" << i << "]=" << h_BP_sum2[i] << std::endl;
-  // }
-  // std::cerr << "**** done *****" << std::endl;
-
-  graphblas::Vector<float> BT_sum(num_rows);
-  graphblas::mxv<float, float, float, float>(&BT_sum, GrB_NULL, GrB_NULL, graphblas::PlusMultipliesSemiring<float>(), &T, &B_rowsum, &desc);
-  // !!!!!!!!!!!!!!!!!!!!!
-
-  float BP_sum_sum = sum_values(BP_sum.vector_.dense_.d_val_, num_rows);
-  float BT_sum_sum = sum_values(BT_sum.vector_.dense_.d_val_, num_rows);
-
-  float ps_grad_P  = 4 * APPB_trace + (float)num_rows * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
-  float ps_grad_T  = 4 * APTB_trace + (float)num_rows * T_sum - 2 * (TAP_sum_sum + BT_sum_sum);
-  float ps_gradt_P = 4 * ATPB_trace + (float)num_rows * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
-  float ps_gradt_T = 4 * ATTB_trace + (float)num_rows * T_sum - 2 * (TAT_sum_sum + BT_sum_sum);
-
-  std::cerr << "ps_grad_P="  << ps_grad_P << std::endl;
-  std::cerr << "ps_grad_T="  << ps_grad_T << std::endl;
-  std::cerr << "ps_gradt_P=" << ps_gradt_P << std::endl;
-  std::cerr << "ps_gradt_T=" << ps_gradt_T << std::endl;
-
-  // --
-  // Check convergence
-
-  float c = ps_grad_P;
-  float d = ps_gradt_P + ps_grad_T;
-  float e = ps_gradt_T;
-
-  float cde = c + e - d;
-  float d2e = d - 2 * e;
-  float alpha, falpha;
-  if((cde == 0) && (d2e == 0)) {
-    alpha  = 0.0;
-    falpha = -1;
-  } else {
-    if(cde == 0) {
-      alpha  = -1;
+    float cde = c + e - d;
+    float d2e = d - 2 * e;
+    float alpha, falpha;
+    if((cde == 0) && (d2e == 0)) {
+      alpha  = 0.0;
       falpha = -1;
     } else {
-      alpha = - d2e / (2 * cde);
-      falpha = cde * pow(alpha, 2) + d2e * alpha;
+      if(cde == 0) {
+        alpha  = -1;
+        falpha = -1;
+      } else {
+        alpha = - d2e / (2 * cde);
+        falpha = cde * pow(alpha, 2) + d2e * alpha;
+      }
     }
+
+    float f1 = c - e;
+
+    std::cerr << "============"  << std::endl;
+    std::cerr << "ps_grad_P=  " << ps_grad_P  << std::endl;
+    std::cerr << "ps_grad_T=  " << ps_grad_T  << std::endl;
+    std::cerr << "ps_gradt_P= " << ps_gradt_P << std::endl;
+    std::cerr << "ps_gradt_T= " << ps_grad_T  << std::endl;
+    std::cerr << "alpha=      " << alpha << std::endl;
+    std::cerr << "falpha=     " << falpha << std::endl;
+    std::cerr << "f1=         " << f1 << std::endl;
+    std::cerr << "============"  << std::endl;
+
+    if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
+      graphblas::Matrix<float> new_P(num_rows, num_cols);
+      add_matrix(P, &T, &new_P, alpha, 1 - alpha);
+      P->clear();
+      P = &new_P;
+
+      graphblas::Matrix<float> new_APB(num_rows, num_cols);
+      add_matrix(APB, &ATB, &new_APB, alpha, 1 - alpha);
+      APB->clear();
+      APB = &new_APB;
+
+      graphblas::Matrix<float> new_AP(num_rows, num_cols);
+      add_matrix(AP, &AT, &new_AP, alpha, 1 - alpha);
+      AP->clear();
+      AP = &new_AP;
+
+    } else if(f1 < 0) {
+      P->clear();
+      APB->clear();
+      AP->clear();
+
+      P   = &T;
+      APB = &ATB;
+      AP  = &AT;
+    } else {
+      break;
+    }
+
   }
-
-  float f1 = c - e;
-
-  if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
-    // P <- (alpha * P) + (1 - alpha) * T
-  } else if(f1 < 0) {
-    // P   <- T
-    // APB <- ATB
-    // AP  <- AT
-    // Probably more?
-  } else {
-    // break;
-  }
-
 
   // ----------------------------------------------------------------------
   // Read results
@@ -256,6 +241,4 @@ int main( int argc, char** argv )
   //   }
   // }
   // std::cout << "score=" << score << std::endl;
-
-  // if(DEBUG) AP.print();
 }
