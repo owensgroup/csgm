@@ -213,6 +213,4 @@ void add_matrix(
   std::vector<float> vec_val(h_val,     h_val + nvals_out);
   C->build(&vec_row, &vec_col, &vec_val, nvals_out, GrB_NULL);
   C->print();
-
-
 }
