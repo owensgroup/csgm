@@ -202,8 +202,16 @@ float rowvector_dot(
 
     float* h_out_val = (float*)malloc(1 * sizeof(float));
     cudaMemcpy(h_out_val, out_val, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+    float result = h_out_val[0];
 
-    return h_out_val[0];
+    cudaFree(tb_colind);
+    cudaFree(tb_rowptr);
+    cudaFree(tb_val);
+    cudaFree(out_row);
+    cudaFree(out_col);
+    cudaFree(out_val);
+
+    return result;
 }
 
 void gpu_flatten_matrix(
