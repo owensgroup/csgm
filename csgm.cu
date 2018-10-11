@@ -116,39 +116,18 @@ int main( int argc, char** argv )
       t_values.push_back(1.0f);
     }
     T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
-    cudaDeviceSynchronize();
 
     std::cerr << "\t Matrix multiply" << std::endl;
-    easy_mxm(&AT,   &A, &T,  &desc);
-    easy_mxm(&ATB, &AT, &B,  &desc);
-    easy_mxm(&PB,    P, &B,  &desc);
-    easy_mxm(&TB,   &T, &B,  &desc);
+    AT.clear();  easy_mxm(&AT,   &A, &T,  &desc);
+    ATB.clear(); easy_mxm(&ATB, &AT, &B,  &desc);
+    PB.clear();  easy_mxm(&PB,    P, &B,  &desc);
+    TB.clear();  easy_mxm(&TB,   &T, &B,  &desc);
 
     std::cerr << "\t Check convergence" << std::endl;
-
-    CpuTimer t1;
-    t1.Start();
     float APPB_trace = gpu_trace(AP, &PB, &desc);
     float APTB_trace = gpu_trace(AP, &TB, &desc);
     float ATPB_trace = gpu_trace(&AT, &PB, &desc);
     float ATTB_trace = gpu_trace(&AT, &TB, &desc);
-    t1.Stop();
-    std::cerr << "t1=" << t1.ElapsedMillis() << std::endl;
-
-    std::cerr << "APPB_trace=" << APPB_trace << std::endl;
-    std::cerr << "APTB_trace=" << APTB_trace << std::endl;
-    std::cerr << "ATPB_trace=" << ATPB_trace << std::endl;
-    std::cerr << "ATTB_trace=" << ATTB_trace << std::endl;
-
-    CpuTimer t2;
-    t2.Start();
-    APPB_trace = cpu_trace(AP, &PB, &desc);
-    APTB_trace = cpu_trace(AP, &TB, &desc);
-    ATPB_trace = cpu_trace(&AT, &PB, &desc);
-    ATTB_trace = cpu_trace(&AT, &TB, &desc);
-    t2.Stop();
-
-    std::cerr << "t2=" << t2.ElapsedMillis() << std::endl;
 
     std::cerr << "APPB_trace=" << APPB_trace << std::endl;
     std::cerr << "APTB_trace=" << APTB_trace << std::endl;
