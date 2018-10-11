@@ -73,36 +73,36 @@ float sum_reduce(
 // --
 // Custome kernels
 
-__global__ void __flatten(int* row_ptr, int* cols, int num_rows) {
+__global__ void __flatten(int* row_ptr, int* cols, int n) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
-  if(i < num_rows) {
+  if(i < n) {
     int start = row_ptr[i];
     int end   = row_ptr[i + 1];
     for(int offset = start; offset < end; offset++) {
-      cols[offset] += i * num_rows;
+      cols[offset] = cols[offset] + (i * n);
     }
   }
 }
 
-void flatten(graphblas::Matrix<float>* A, graphblas::Matrix<float>* flat, bool transpose) {
-    int num_edges; A->nvals(&num_edges);
-    int num_rows;  A->nrows(&num_rows);
+void flatten(graphblas::Matrix<float>* X, graphblas::Matrix<float>* flat, bool transpose) {
+    int num_edges; X->nvals(&num_edges);
+    int num_rows;  X->nrows(&num_rows);
 
     // Flatten matrix to vector
-    int* Av;
-    cudaMalloc((void**)&Av, num_edges * sizeof(int));
-    cudaMemcpy(Av, A->matrix_.sparse_.d_csrColInd_, num_edges * sizeof(int), cudaMemcpyDeviceToDevice);
+    int* Xv;
+    cudaMalloc((void**)&Xv, num_edges * sizeof(int));
+    cudaMemcpy(Xv, X->matrix_.sparse_.d_csrColInd_, num_edges * sizeof(int), cudaMemcpyDeviceToDevice);
 
-    int A_blocks = 1 + (num_rows / THREADS);
-    __flatten<<<A_blocks, THREADS>>>(A->matrix_.sparse_.d_csrRowPtr_, Av, num_rows);
+    int X_blocks = 1 + (num_rows / THREADS);
+    __flatten<<<X_blocks, THREADS>>>(X->matrix_.sparse_.d_csrRowPtr_, Xv, num_rows);
 
-    // Convert Av back to GraphBLAS matrix
-    int* h_Av = (int*)malloc(num_edges * sizeof(int));
-    cudaMemcpy(h_Av, Av, num_edges * sizeof(int), cudaMemcpyDeviceToHost);
+    // Convert Xv back to GraphBLXS matrix
+    int* h_Xv = (int*)malloc(num_edges * sizeof(int));
+    cudaMemcpy(h_Xv, Xv, num_edges * sizeof(int), cudaMemcpyDeviceToHost);
 
     std::vector<int>   flat_row(num_edges, 0);
-    std::vector<int>   flat_col(h_Av, h_Av + num_edges);
-    std::vector<float> flat_val(A->matrix_.sparse_.h_csrVal_, A->matrix_.sparse_.h_csrVal_ + num_edges);
+    std::vector<int>   flat_col(h_Xv, h_Xv + num_edges);
+    std::vector<float> flat_val(X->matrix_.sparse_.h_csrVal_, X->matrix_.sparse_.h_csrVal_ + num_edges);
     if(!transpose) {
       flat->build(&flat_row, &flat_col, &flat_val, num_edges, GrB_NULL);
     } else {
@@ -110,7 +110,9 @@ void flatten(graphblas::Matrix<float>* A, graphblas::Matrix<float>* flat, bool t
     }
 }
 
-float trace(
+
+
+float cpu_trace(
   graphblas::Matrix<float>* A,
   graphblas::Matrix<float>* B,
   graphblas::Descriptor* desc
@@ -119,16 +121,265 @@ float trace(
     A->matrix_.sparse_.gpuToCpu();
     B->matrix_.sparse_.gpuToCpu();
 
-    int num_rows; A->nrows(&num_rows);
+    int nrows; A->nrows(&nrows);
 
-    graphblas::Matrix<float> flat_A(1, num_rows * num_rows); flatten(A, &flat_A, false);
-    graphblas::Matrix<float> flat_B(num_rows * num_rows, 1); flatten(B, &flat_B, true);
+    graphblas::Matrix<float> flat_A(1, nrows * nrows); flatten(A, &flat_A, false);
+    cudaDeviceSynchronize();
+
+    graphblas::Matrix<float> flat_B(nrows * nrows, 1); flatten(B, &flat_B, true);
+    cudaDeviceSynchronize();
 
     graphblas::Matrix<float> trace_mtx(1, 1);
     easy_mxm(&trace_mtx, &flat_A, &flat_B, desc);
     trace_mtx.matrix_.sparse_.gpuToCpu();
     return trace_mtx.matrix_.sparse_.h_csrVal_[0];
 }
+
+
+
+float gpu_trace(
+  graphblas::Matrix<float>* A,
+  graphblas::Matrix<float>* B,
+  graphblas::Descriptor* desc
+)
+{
+    std::cerr << "gpu_trace" << std::endl;
+
+    int n; A->nrows(&n);
+
+    cusparseHandle_t handle = 0;
+    cusparseStatus_t status = cusparseCreate(&handle);
+
+    // --
+    // Flatten A
+
+    int nvals_a; A->nvals(&nvals_a);
+    std::cerr << "nvals_a=" << nvals_a << std::endl;
+    int* flat_a_col;
+    int* flat_a_row;
+    float* flat_a_val;
+    cudaMalloc((void**)&flat_a_col, nvals_a * sizeof(int));
+    cudaMalloc((void**)&flat_a_row, 2 * sizeof(int));
+    cudaMalloc((void**)&flat_a_val, nvals_a * sizeof(float));
+
+    // Flatten columns
+    cudaMemcpy(flat_a_col, A->matrix_.sparse_.d_csrColInd_, nvals_a * sizeof(int), cudaMemcpyDeviceToDevice);
+    int blocks = 1 + (n / THREADS);
+    __flatten<<<blocks, THREADS>>>(A->matrix_.sparse_.d_csrRowPtr_, flat_a_col, n);
+
+    // Dummy rows
+    int * h_flat_a_row = (int*)malloc(2 * sizeof(int));
+    h_flat_a_row[0] = 0;
+    h_flat_a_row[1] = nvals_a;
+    cudaMemcpy(flat_a_row, h_flat_a_row, 2 * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Copy values
+    cudaMemcpy(flat_a_val, A->matrix_.sparse_.d_csrVal_, nvals_a * sizeof(float), cudaMemcpyDeviceToDevice);
+
+    // --
+    // Flatten B
+
+    int nvals_b; B->nvals(&nvals_b);
+    std::cerr << "nvals_b=" << nvals_b << std::endl;
+    int* flat_b_col;
+    int* flat_b_row;
+    float* flat_b_val;
+
+    cudaMalloc((void**)&flat_b_col, nvals_b * sizeof(int));
+    cudaMalloc((void**)&flat_b_row, 2 * sizeof(int));
+    cudaMalloc((void**)&flat_b_val, nvals_b * sizeof(float));
+
+    // Flatten columns
+    cudaMemcpy(flat_b_col, B->matrix_.sparse_.d_csrColInd_, nvals_b * sizeof(int), cudaMemcpyDeviceToDevice);
+    __flatten<<<blocks, THREADS>>>(B->matrix_.sparse_.d_csrRowPtr_, flat_b_col, n);
+
+    // Dummy rows
+    int * h_flat_b_row = (int*)malloc(2 * sizeof(int));
+    h_flat_b_row[0] = 0;
+    h_flat_b_row[1] = nvals_b;
+    cudaMemcpy(flat_b_row, h_flat_b_row, 2 * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Copy values
+    cudaMemcpy(flat_b_val, B->matrix_.sparse_.d_csrVal_, nvals_b * sizeof(float), cudaMemcpyDeviceToDevice);
+
+    // --
+    // Transpose B
+
+    int* tflat_b_col;
+    int* tflat_b_row;
+    float* tflat_b_val;
+    cudaMalloc((void**)&tflat_b_col, nvals_b * sizeof(int));
+    cudaMalloc((void**)&tflat_b_row, (n * n + 1) * sizeof(int));
+    cudaMalloc((void**)&tflat_b_val, nvals_b * sizeof(float));
+
+    cusparseScsr2csc(handle, 1, n * n, nvals_b,
+                     flat_b_val, flat_b_row, flat_b_col,
+                     tflat_b_val, tflat_b_col, tflat_b_row,
+                     CUSPARSE_ACTION_NUMERIC,
+                     CUSPARSE_INDEX_BASE_ZERO);
+    // return -1;
+    cusparseMatDescr_t desc_a;   cusparseCreateMatDescr(&desc_a);
+    cusparseMatDescr_t desc_b;   cusparseCreateMatDescr(&desc_b);
+    cusparseMatDescr_t desc_out; cusparseCreateMatDescr(&desc_out);
+
+    int* out_row;
+    int* out_col;
+    float* out_val;
+
+    // cusparseSetPointerMode(handle, CUSPARSE_POINTER_MODE_HOST);
+    cudaMalloc((void**)&out_row, sizeof(int)*2);
+    cudaMalloc((void**)&out_col, sizeof(int)*1);
+    cudaMalloc((void**)&out_val, sizeof(float)*1);
+
+    cusparseScsrgemm(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            1, n * n, 1,
+            desc_a, nvals_a, flat_a_val, flat_a_row, flat_a_col,
+            desc_b, nvals_b, tflat_b_val, tflat_b_row, tflat_b_col,
+            desc_out, out_val, out_row, out_col);
+
+    float* h_out_val = (float*)malloc(1 * sizeof(float));
+    cudaMemcpy(h_out_val, out_val, 1 * sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(flat_a_col);
+    cudaFree(flat_a_row);
+    cudaFree(flat_a_val);
+    cudaFree(flat_b_col);
+    cudaFree(flat_b_row);
+    cudaFree(flat_b_val);
+    cudaFree(tflat_b_col);
+    cudaFree(tflat_b_row);
+    cudaFree(tflat_b_val);
+    cudaFree(out_row);
+    cudaFree(out_col);
+    cudaFree(out_val);
+
+    return h_out_val[0];
+}
+
+
+
+// float trace(
+//   graphblas::Matrix<float>* A,
+//   graphblas::Matrix<float>* B,
+//   graphblas::Descriptor* desc
+// )
+// {
+//     A->matrix_.sparse_.gpuToCpu();
+//     B->matrix_.sparse_.gpuToCpu();
+
+//     int nrows; A->nrows(&nrows);
+
+//     graphblas::Matrix<float> flat_A(1, nrows * nrows); flatten(A, &flat_A);
+//     cudaDeviceSynchronize();
+
+//     graphblas::Matrix<float> flat_B(1, nrows * nrows); flatten(B, &flat_B);
+//     cudaDeviceSynchronize();
+
+//     cusparseHandle_t handle = 0;
+//     cusparseStatus_t status = cusparseCreate(&handle);
+//     cusparseMatDescr_t desc_a;   cusparseCreateMatDescr(&desc_a);
+//     cusparseMatDescr_t desc_b;   cusparseCreateMatDescr(&desc_b);
+//     cusparseMatDescr_t desc_out; cusparseCreateMatDescr(&desc_out);
+
+//     int baseC, nnzC;
+//     int* csrRowPtrC;
+//     int* csrColIndC;
+//     float* csrValC;
+
+//     int nvals_a; flat_A.nvals(&nvals_a);
+
+//     int * a_row;
+//     int * a_col;
+//     float * a_val;
+//     cudaMalloc((void**)&a_row, sizeof(int) * 2);
+//     cudaMalloc((void**)&a_col, sizeof(int) * nvals_a);
+//     cudaMalloc((void**)&a_val, sizeof(float) * nvals_a);
+//     cudaMemcpy(a_row, flat_A.matrix_.sparse_.d_csrRowPtr_, sizeof(int)   * 2, cudaMemcpyDeviceToDevice);
+//     cudaMemcpy(a_col, flat_A.matrix_.sparse_.d_csrColInd_, sizeof(int)   * nvals_a, cudaMemcpyDeviceToDevice);
+//     cudaMemcpy(a_val, flat_A.matrix_.sparse_.d_csrVal_,    sizeof(float) * nvals_a, cudaMemcpyDeviceToDevice);
+
+//     int * h_a_row = (int*)malloc(sizeof(int) * 2);
+//     int * h_a_col = (int*)malloc(sizeof(int) * nvals_a);
+//     float * h_a_val = (float*)malloc(sizeof(float) * nvals_a);
+//     cudaMemcpy(h_a_row, a_row, sizeof(int) * 2, cudaMemcpyDeviceToHost);
+//     cudaMemcpy(h_a_col, a_col, sizeof(int) * nvals_a, cudaMemcpyDeviceToHost);
+//     cudaMemcpy(h_a_val, a_val, sizeof(float) * nvals_a, cudaMemcpyDeviceToHost);
+
+//     std::cerr << "nvals_a=" << nvals_a << std::endl;
+//     for(int i = 0; i < 2; i ++) {
+//       std::cerr << i << " " << h_a_row[i] << std::endl;
+//     }
+//     for(int i = 0; i < 10; i ++) {
+//       std::cerr << i << " " << h_a_col[i] << " " << h_a_val[i] << std::endl;
+//     }
+
+//     // --
+
+//     int nvals_b; flat_B.nvals(&nvals_b);
+
+//     int * b_row;
+//     int * b_col;
+//     float * b_val;
+//     cudaMalloc((void**)&b_row, sizeof(int) * 2);
+//     cudaMalloc((void**)&b_col, sizeof(int) * nvals_b);
+//     cudaMalloc((void**)&b_val, sizeof(float) * nvals_b);
+//     cudaMemcpy(b_row, flat_B.matrix_.sparse_.d_csrRowPtr_, sizeof(int)   * 2, cudaMemcpyDeviceToDevice);
+//     cudaMemcpy(b_col, flat_B.matrix_.sparse_.d_csrColInd_, sizeof(int)   * nvals_b, cudaMemcpyDeviceToDevice);
+//     cudaMemcpy(b_val, flat_B.matrix_.sparse_.d_csrVal_,    sizeof(float) * nvals_b, cudaMemcpyDeviceToDevice);
+
+//     int * h_b_row = (int*)malloc(sizeof(int) * 2);
+//     int * h_b_col = (int*)malloc(sizeof(int) * nvals_b);
+//     float * h_b_val = (float*)malloc(sizeof(float) * nvals_b);
+//     cudaMemcpy(h_b_row, b_row, sizeof(int) * 2, cudaMemcpyDeviceToHost);
+//     cudaMemcpy(h_b_col, b_col, sizeof(int) * nvals_b, cudaMemcpyDeviceToHost);
+//     cudaMemcpy(h_b_val, b_val, sizeof(float) * nvals_b, cudaMemcpyDeviceToHost);
+
+//     std::cerr << "nvals_b=" << nvals_b << std::endl;
+//     for(int i = 0; i < 2; i ++) {
+//       std::cerr << i << " " << h_b_row[i] << std::endl;
+//     }
+//     for(int i = 0; i < 10; i ++) {
+//       std::cerr << i << " " << h_b_col[i] << " " << h_b_val[i] << std::endl;
+//     }
+
+//     // nnzTotalDevHostPtr points to host memory
+//     int *nnzTotalDevHostPtr = &nnzC;
+//     cusparseSetPointerMode(handle, CUSPARSE_POINTER_MODE_HOST);
+//     cudaMalloc((void**)&csrRowPtrC, sizeof(int) * 2);
+//     cusparseXcsrgemmNnz(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_TRANSPOSE,
+//             1, nrows * nrows, 1,
+//             desc_a, nvals_a, a_row, a_col,
+//             desc_b, nvals_b, b_row, b_col,
+//             desc_out, csrRowPtrC, nnzTotalDevHostPtr );
+
+//     // // cudaDeviceSynchronize();
+//     // // if (NULL != nnzTotalDevHostPtr){
+//     // //     nnzC = *nnzTotalDevHostPtr;
+//     // // }else{
+//     // //     cudaMemcpy(&nnzC, csrRowPtrC + 1, sizeof(int), cudaMemcpyDeviceToHost);
+//     // //     cudaMemcpy(&baseC, csrRowPtrC, sizeof(int), cudaMemcpyDeviceToHost);
+//     // //     nnzC -= baseC;
+//     // // }
+//     // // cudaDeviceSynchronize();
+//     // // cudaMalloc((void**)&csrColIndC, sizeof(int)*nnzC);
+//     // // cudaMalloc((void**)&csrValC, sizeof(float)*nnzC);
+//     // // cudaDeviceSynchronize();
+//     // // cusparseScsrgemm(handle, CUSPARSE_OPERATION_NON_TRANSPOSE, CUSPARSE_OPERATION_TRANSPOSE,
+//     // //         1, nrows * nrows, 1,
+//     // //         desc_a, nvals_a, a_val, a_row, a_col,
+//     // //         desc_b, nvals_b, b_val, b_row, b_col,
+//     // //         desc_out, csrValC, csrRowPtrC, csrColIndC);
+//     // // cudaDeviceSynchronize();
+
+//     std::cerr << "returning" << std::endl;
+
+//     return -1;
+
+//     // graphblas::Matrix<float> trace_mtx(1, 1);
+//     // easy_mxm(&trace_mtx, &flat_A, &flat_B, desc);
+//     // trace_mtx.matrix_.sparse_.gpuToCpu();
+//     // return trace_mtx.matrix_.sparse_.h_csrVal_[0];
+// }
 
 
 
