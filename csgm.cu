@@ -17,7 +17,6 @@
 
 #define NUM_SEEDS 100
 
-
 int main( int argc, char** argv )
 {
   bool DEBUG = true;
@@ -77,8 +76,25 @@ int main( int argc, char** argv )
   easy_mxm(&_AP,  &A,  P, &desc); graphblas::Matrix<float>* AP = &_AP;
   easy_mxm(&_APB, AP, &B, &desc); graphblas::Matrix<float>* APB = &_APB;
 
+  int* h_ascending = (int*) malloc((num_rows+1)*sizeof(int));;
+  float* h_ones    = (float*) malloc(num_rows*sizeof(int));
+  for (int i = 0; i < num_rows; ++i) {
+    h_ascending[i] = i;
+    h_ones[i]      = 1.f;
+  }
+  h_ascending[num_rows] = num_rows;
+
   int* d_person2item;
-  cudaMalloc((void **)&d_person2item, num_rows * sizeof(int));
+  int* d_ascending;
+  float* d_ones;
+  cudaMalloc((void **)&d_person2item,   num_rows * sizeof(int));
+  cudaMalloc((void **)&d_ascending, (num_rows+1) * sizeof(int));
+  cudaMalloc((void **)&d_ones,          num_rows * sizeof(float));
+
+  cudaMemcpy(d_ascending, h_ascending, (num_rows+1) * sizeof(int),
+      cudaMemcpyHostToDevice);
+  cudaMemcpy(d_ones, h_ones, num_rows*sizeof(int),
+      cudaMemcpyHostToDevice);
 
   for(int iter = 0; iter < 20; iter++) {
     std::cerr << "******** iter=" << iter << "**********" << std::endl;
@@ -108,27 +124,16 @@ int main( int argc, char** argv )
 
     // Build T matrix from `h_person2item` -- could be faster?
     cudaDeviceSynchronize();
-    int* h_person2item = (int *)malloc(num_rows * sizeof(int));
-    cudaMemcpy(h_person2item, d_person2item, num_rows * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-
-    std::vector<graphblas::Index> t_row_indices, t_col_indices;
-    std::vector<float> t_values;
-    for(graphblas::Index i = 0; i < num_rows; i++) {
-      t_row_indices.push_back(i);
-      t_col_indices.push_back(h_person2item[i]);
-      t_values.push_back(1.0f);
-    }
-    T.build(&t_row_indices, &t_col_indices, &t_values, num_rows, GrB_NULL);
+    T.build(d_ascending, d_person2item, d_ones, num_rows);
 
     // --------------------------
     // Matmuls
 
     std::cerr << "\t Matrix multiply" << std::endl;
-    AT.clear();  easy_mxm(&AT,   &A, &T,  &desc);
-    ATB.clear(); easy_mxm(&ATB, &AT, &B,  &desc);
-    PB.clear();  easy_mxm(&PB,    P, &B,  &desc);
-    TB.clear();  easy_mxm(&TB,   &T, &B,  &desc);
+    AT.clear(); A.print(); T.print(); easy_mxm(&AT,   &A, &T,  &desc);
+    ATB.clear(); AT.print(); B.print(); easy_mxm(&ATB, &AT, &B,  &desc);
+    PB.clear();  P->print(); B.print(); easy_mxm(&PB,    P, &B,  &desc);
+    TB.clear();  T.print(); B.print(); easy_mxm(&TB,   &T, &B,  &desc);
 
     // --------------------------
     // Step size + convergence checking
@@ -230,7 +235,7 @@ int main( int argc, char** argv )
     std::cerr << "f1=         " << f1 << std::endl;
     std::cerr << "============"  << std::endl;
     std::cerr << "BREAK AFTER FIRST ITERATION" << std::endl;
-    break;
+    //break;
 
   }
 
