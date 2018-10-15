@@ -27,7 +27,7 @@ typedef graphblas::Vector<float> Vector;
 
 int main( int argc, char** argv )
 {
-  bool verbose  = true;
+  bool verbose  = false;
   int num_seeds = NUM_SEEDS;
   int num_iters = NUM_ITERS;
   float tolerance = TOLERANCE;
@@ -78,6 +78,7 @@ int main( int argc, char** argv )
   easy_mxm(AP,   A, P, &desc);
   easy_mxm(APB, AP, B, &desc);
 
+  // Data structures for auction
   int* h_ascending = (int*) malloc((num_nodes+1)*sizeof(int));;
   float* h_ones    = (float*) malloc(num_nodes*sizeof(int));
   for (int i = 0; i < num_nodes; ++i) {
@@ -85,6 +86,19 @@ int main( int argc, char** argv )
     h_ones[i]      = 1.f;
   }
   h_ascending[num_nodes] = num_nodes;
+
+  float* d_ones;
+  int* d_ascending;
+  int* d_person2item;
+
+  cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
+  cudaMalloc((void **)&d_ascending, (num_nodes+1) * sizeof(int));
+  cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
+
+  cudaMemcpy(d_ones, h_ones, num_nodes * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_ascending, h_ascending, (num_nodes + 1) * sizeof(int), cudaMemcpyHostToDevice);
+
+  T->build(d_ascending, d_person2item, d_ones, num_nodes);
 
   GpuTimer timer;
   for(int iter = 0; iter < num_iters; iter++) {
@@ -96,16 +110,10 @@ int main( int argc, char** argv )
     // --------------------------
     // Solve LAP
 
-    int* d_person2item;
-    cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
-
-    int APB_num_edges; APB->nvals(&APB_num_edges);
-    if(verbose) {
-      std::cerr << "run_auction" << std::endl;
-    }
+    int APB_num_entries; APB->nvals(&APB_num_entries);
     run_auction(
         num_nodes,
-        APB_num_edges,
+        APB_num_entries,
 
         APB->matrix_.sparse_.d_csrVal_,
         APB->matrix_.sparse_.d_csrRowPtr_,
@@ -118,21 +126,10 @@ int main( int argc, char** argv )
         0.0,
 
         1,
-        1
+        int(verbose)
     );
-    if(verbose) {
-      std::cerr << "done run_auction" << std::endl;
-    }
 
-    float* d_ones;
-    cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
-    cudaMemcpy(d_ones, h_ones, num_nodes * sizeof(int), cudaMemcpyHostToDevice);
-
-    int* d_ascending;
-    cudaMalloc((void **)&d_ascending, (num_nodes+1) * sizeof(int));
-    cudaMemcpy(d_ascending, h_ascending, (num_nodes + 1) * sizeof(int), cudaMemcpyHostToDevice);
-
-    T->build(d_ascending, d_person2item, d_ones, num_nodes);
+    cudaMemcpy(T->matrix_.sparse_.d_csrColInd_, d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToDevice);
 
     // --------------------------
     // Matmuls
@@ -202,7 +199,6 @@ int main( int argc, char** argv )
     }
 
     float f1 = c - e;
-
     float num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
 
     if(verbose) {
@@ -222,28 +218,26 @@ int main( int argc, char** argv )
     }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
-      std::cerr << "********************** convex combination *************************" << std::endl;
-
       spmm_convex_combination(P, T, alpha, 1 - alpha);
       spmm_convex_combination(APB, ATB, alpha, 1 - alpha);
       spmm_convex_combination(AP, AT, alpha, 1 - alpha);
 
-      timer.Stop();
-      std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
     } else if(f1 < 0) {
       P->clear();
       AP->clear();
       APB->clear();
 
-      std::swap(P, T);
-      std::swap(AP, AT);
-      std::swap(APB, ATB);
-
-      timer.Stop();
-      std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
+      // std::swap(P, T);
+      // std::swap(AP, AT);
+      // std::swap(APB, ATB);
+      P->dup(T);
+      AP->dup(AT);
+      APB->dup(ATB);
     } else {
       break;
     }
+    timer.Stop();
+    std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
 
   }
   timer.Stop();
