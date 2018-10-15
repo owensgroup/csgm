@@ -37,60 +37,46 @@ int main( int argc, char** argv )
   std::vector<graphblas::Index> a_row_indices, b_row_indices, p_row_indices, t_row_indices;
   std::vector<graphblas::Index> a_col_indices, b_col_indices, p_col_indices, t_col_indices;
   std::vector<float> a_values, b_values, p_values, t_values;
-  graphblas::Index num_rows, num_cols;
+  graphblas::Index num_nodes;
   graphblas::Index a_num_edges, b_num_edges;
 
-  // Load A
-  readMtx("data/A.mtx", a_row_indices, a_col_indices, a_values, num_rows, num_cols, a_num_edges, 0, false);
-  graphblas::Matrix<float> A(num_rows, num_cols);
-  A.build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
+  readMtx("data/A.mtx", a_row_indices, a_col_indices, a_values, num_nodes, num_nodes, a_num_edges, 0, false);
+  readMtx("data/B.mtx", b_row_indices, b_col_indices, b_values, num_nodes, num_nodes, b_num_edges, 0, false);
 
-  // Load B
-  readMtx("data/B.mtx", b_row_indices, b_col_indices, b_values, num_rows, num_cols, b_num_edges, 0, false);
-  graphblas::Matrix<float> B(num_rows, num_cols);
-  B.build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
+  // ----------------------------------------------------------------------
+  // Initialize data structures
 
-  // Create P
+  graphblas::Matrix<float>   _A(num_nodes, num_nodes); graphblas::Matrix<float>* A   = &_A;
+  graphblas::Matrix<float>   _B(num_nodes, num_nodes); graphblas::Matrix<float>* B   = &_B;
+  graphblas::Matrix<float>   _P(num_nodes, num_nodes); graphblas::Matrix<float>* P   = &_P;
+  graphblas::Matrix<float>  _AP(num_nodes, num_nodes); graphblas::Matrix<float>* AP  = &_AP;
+  graphblas::Matrix<float> _APB(num_nodes, num_nodes); graphblas::Matrix<float>* APB = &_APB;
+  graphblas::Matrix<float>   _T(num_nodes, num_nodes); graphblas::Matrix<float>* T   = &_T;
+  graphblas::Matrix<float>  _AT(num_nodes, num_nodes); graphblas::Matrix<float>* AT  = &_AT;
+  graphblas::Matrix<float> _ATB(num_nodes, num_nodes); graphblas::Matrix<float>* ATB = &_ATB;
+  graphblas::Matrix<float>  _PB(num_nodes, num_nodes); graphblas::Matrix<float>* PB  = &_PB;
+  graphblas::Matrix<float>  _TB(num_nodes, num_nodes); graphblas::Matrix<float>* TB  = &_TB;
+  graphblas::Matrix<float>* tmp;
+
+  A->build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
+  B->build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
+
   for(graphblas::Index i = 0; i < NUM_SEEDS; i++) {
     p_row_indices.push_back(i);
     p_col_indices.push_back(i);
     p_values.push_back(1.0f);
   }
-  graphblas::Matrix<float> _P(num_rows, num_cols);
-  _P.build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
-  graphblas::Matrix<float>* P = &_P;
+  P->build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
+  easy_mxm(AP,   A, P, &desc);
+  easy_mxm(APB, AP, B, &desc);
 
-  // ----------------------------------------------------------------------
-  // Allocation for intermediate/final results
-
-  graphblas::Matrix<float>  _AP(num_rows, num_cols);
-  graphblas::Matrix<float> _APB(num_rows, num_cols);
-  graphblas::Matrix<float>    T(num_rows, num_cols);
-  graphblas::Matrix<float>   AT(num_rows, num_cols);
-  graphblas::Matrix<float>  ATB(num_rows, num_cols);
-  graphblas::Matrix<float>   PB(num_rows, num_cols);
-  graphblas::Matrix<float>   TB(num_rows, num_cols);
-
-  easy_mxm(&_AP,  &A,  P, &desc); graphblas::Matrix<float>* AP = &_AP;
-  easy_mxm(&_APB, AP, &B, &desc); graphblas::Matrix<float>* APB = &_APB;
-
-  int* h_ascending = (int*) malloc((num_rows+1)*sizeof(int));;
-  float* h_ones    = (float*) malloc(num_rows*sizeof(int));
-  for (int i = 0; i < num_rows; ++i) {
+  int* h_ascending = (int*) malloc((num_nodes+1)*sizeof(int));;
+  float* h_ones    = (float*) malloc(num_nodes*sizeof(int));
+  for (int i = 0; i < num_nodes; ++i) {
     h_ascending[i] = i;
     h_ones[i]      = 1.f;
   }
-  h_ascending[num_rows] = num_rows;
-
-  int* d_person2item;
-  int* d_ascending;
-  float* d_ones;
-  cudaMalloc((void **)&d_person2item,   num_rows * sizeof(int));
-  cudaMalloc((void **)&d_ascending, (num_rows+1) * sizeof(int));
-  cudaMalloc((void **)&d_ones,          num_rows * sizeof(float));
-
-  cudaMemcpy(d_ascending, h_ascending, (num_rows+1) * sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemcpy(d_ones, h_ones, num_rows*sizeof(int), cudaMemcpyHostToDevice);
+  h_ascending[num_nodes] = num_nodes;
 
   for(int iter = 0; iter < 20; iter++) {
     std::cerr << "===== iter=" << iter << std::endl;
@@ -98,9 +84,12 @@ int main( int argc, char** argv )
     // --------------------------
     // Solve LAP
 
+    int* d_person2item;
+    cudaMalloc((void **)&d_person2item,     num_nodes * sizeof(int));
+
     int APB_num_edges; APB->nvals(&APB_num_edges);
     run_auction(
-        num_rows,
+        num_nodes,
         APB_num_edges,
 
         APB->matrix_.sparse_.d_csrVal_,
@@ -116,85 +105,67 @@ int main( int argc, char** argv )
         1,
         1
     );
-    cudaDeviceSynchronize(); // ??
+    cudaDeviceSynchronize(); // ?? Necessary
 
-// <<
-    // ----------------------------------------------------------------------
-    // Read results
-    int* h_person2item = (int*)malloc(num_rows * sizeof(int));
-    cudaMemcpy(h_person2item, d_person2item, num_rows * sizeof(int), cudaMemcpyDeviceToHost);
-    APB->matrix_.sparse_.gpuToCpu();
-    float score = 0;
-    for (int i = 0; i < num_rows; i++) {
-      int start = APB->matrix_.sparse_.h_csrRowPtr_[i];
-      int end   = APB->matrix_.sparse_.h_csrRowPtr_[i + 1];
-      for(int j = start; j < end; j++) {
-        if(APB->matrix_.sparse_.h_csrColInd_[j] == h_person2item[i]) {
-          score += APB->matrix_.sparse_.h_csrVal_[j];
-        }
-      }
-    }
-    std::cout << "score=" << score << std::endl;
-// >>
+    float* d_ones;
+    cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
+    cudaMemcpy(d_ones, h_ones, num_nodes * sizeof(int), cudaMemcpyHostToDevice);
 
-    float trace1 = -1;
-    if(iter > 0) {
-      trace1 = gpu_trace(P, &T, &desc);
-    }
-    T.build(d_ascending, d_person2item, d_ones, num_rows);
-    float trace2 = gpu_trace(P, &T, &desc);
+    int* d_ascending;
+    cudaMalloc((void **)&d_ascending, (num_nodes+1) * sizeof(int));
+    cudaMemcpy(d_ascending, h_ascending, (num_nodes + 1) * sizeof(int), cudaMemcpyHostToDevice);
 
-    std::cerr << "trace1= " << std::setprecision(9) << trace1 << std::endl;
-    std::cerr << "trace2= " << std::setprecision(9) << trace2 << std::endl;
+    T->clear();
+    T->build(d_ascending, d_person2item, d_ones, num_nodes);
 
     // --------------------------
     // Matmuls
 
-    AT.clear();  easy_mxm(&AT,   &A, &T,  &desc);
-    ATB.clear(); easy_mxm(&ATB, &AT, &B,  &desc);
-    PB.clear();  easy_mxm(&PB,    P, &B,  &desc);
-    TB.clear();  easy_mxm(&TB,   &T, &B,  &desc);
+    AT->clear();  easy_mxm(AT,   A,  T, &desc);
+    ATB->clear(); easy_mxm(ATB, AT,  B, &desc);
+    PB->clear();  easy_mxm(PB,   P,  B, &desc);
+    TB->clear();  easy_mxm(TB,   T,  B, &desc);
 
     // --------------------------
     // Step size + convergence checking
 
-    float APPB_trace = gpu_trace(AP, &PB, &desc);
-    float APTB_trace = gpu_trace(AP, &TB, &desc);
-    float ATPB_trace = gpu_trace(&AT, &PB, &desc);
-    float ATTB_trace = gpu_trace(&AT, &TB, &desc);
+    float APPB_trace = gpu_trace(AP, PB, &desc);
+    float APTB_trace = gpu_trace(AP, TB, &desc);
+    float ATPB_trace = gpu_trace(AT, PB, &desc);
+    float ATTB_trace = gpu_trace(AT, TB, &desc);
 
     std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
     std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
     std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
     std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
 
-    float T_sum = (float)num_rows;
+    float T_sum = (float)num_nodes;
     int P_num_values; P->nvals(&P_num_values);
     float P_sum = sum_reduce(P->matrix_.sparse_.d_csrVal_, P_num_values);
 
-    graphblas::Vector<float> AP_rowsum(num_rows); rowsum(&AP_rowsum,  AP, &desc);
-    graphblas::Vector<float> AT_rowsum(num_rows); rowsum(&AT_rowsum, &AT, &desc);
-    graphblas::Vector<float> B_rowsum(num_rows);  rowsum( &B_rowsum,  &B, &desc);
+    graphblas::Vector<float> AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
+    graphblas::Vector<float> AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
+    graphblas::Vector<float> B_rowsum(num_nodes);  rowsum( &B_rowsum,   B, &desc);
 
-    graphblas::Vector<float> PAP_sum(num_rows); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
-    graphblas::Vector<float> PAT_sum(num_rows); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
-    graphblas::Vector<float> TAP_sum(num_rows); easy_mxv(&TAP_sum, &T, &AP_rowsum, &desc);
-    graphblas::Vector<float> TAT_sum(num_rows); easy_mxv(&TAT_sum, &T, &AT_rowsum, &desc);
+    graphblas::Vector<float> PAP_sum(num_nodes); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
+    graphblas::Vector<float> PAT_sum(num_nodes); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
+    graphblas::Vector<float> TAP_sum(num_nodes); easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
+    graphblas::Vector<float> TAT_sum(num_nodes); easy_mxv(&TAT_sum,  T, &AT_rowsum, &desc);
 
-    graphblas::Vector<float> BP_sum(num_rows); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
-    graphblas::Vector<float> BT_sum(num_rows); easy_vxm(&BT_sum, &B_rowsum, &T, &desc);
+    graphblas::Vector<float> BP_sum(num_nodes); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
+    graphblas::Vector<float> BT_sum(num_nodes); easy_vxm(&BT_sum, &B_rowsum, T, &desc);
 
-    float PAP_sum_sum = sum_reduce(PAP_sum.vector_.dense_.d_val_, num_rows);
-    float PAT_sum_sum = sum_reduce(PAT_sum.vector_.dense_.d_val_, num_rows);
-    float TAP_sum_sum = sum_reduce(TAP_sum.vector_.dense_.d_val_, num_rows);
-    float TAT_sum_sum = sum_reduce(TAT_sum.vector_.dense_.d_val_, num_rows);
-    float BP_sum_sum  = sum_reduce(BP_sum.vector_.sparse_.d_val_, num_rows);
-    float BT_sum_sum  = sum_reduce(BT_sum.vector_.sparse_.d_val_, num_rows);
+    float PAP_sum_sum = sum_reduce(PAP_sum.vector_.dense_.d_val_, num_nodes);
+    float PAT_sum_sum = sum_reduce(PAT_sum.vector_.dense_.d_val_, num_nodes);
+    float TAP_sum_sum = sum_reduce(TAP_sum.vector_.dense_.d_val_, num_nodes);
+    float TAT_sum_sum = sum_reduce(TAT_sum.vector_.dense_.d_val_, num_nodes);
+    float BP_sum_sum  = sum_reduce(BP_sum.vector_.sparse_.d_val_, num_nodes);
+    float BT_sum_sum  = sum_reduce(BT_sum.vector_.sparse_.d_val_, num_nodes);
 
-    float ps_grad_P  = 4 * APPB_trace + (float)num_rows * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
-    float ps_grad_T  = 4 * APTB_trace + (float)num_rows * T_sum - 2 * (TAP_sum_sum + BT_sum_sum);
-    float ps_gradt_P = 4 * ATPB_trace + (float)num_rows * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
-    float ps_gradt_T = 4 * ATTB_trace + (float)num_rows * T_sum - 2 * (TAT_sum_sum + BT_sum_sum);
+    float ps_grad_P  = 4 * APPB_trace + (float)num_nodes * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
+    float ps_grad_T  = 4 * APTB_trace + (float)num_nodes * T_sum - 2 * (TAP_sum_sum + BT_sum_sum);
+    float ps_gradt_P = 4 * ATPB_trace + (float)num_nodes * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
+    float ps_gradt_T = 4 * ATTB_trace + (float)num_nodes * T_sum - 2 * (TAT_sum_sum + BT_sum_sum);
 
     // --
     // Check convergence
@@ -231,31 +202,59 @@ int main( int argc, char** argv )
     std::cerr << "============" << std::endl;
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
-      graphblas::Matrix<float> new_P(num_rows, num_cols);
-      add_matrix(P, &T, &new_P, alpha, 1 - alpha);
+      graphblas::Matrix<float> new_P(num_nodes, num_nodes);
+      add_matrix(P, T, &new_P, alpha, 1 - alpha);
       P->clear();
       P = &new_P;
 
-      graphblas::Matrix<float> new_APB(num_rows, num_cols);
-      add_matrix(APB, &ATB, &new_APB, alpha, 1 - alpha);
+      graphblas::Matrix<float> new_APB(num_nodes, num_nodes);
+      add_matrix(APB, ATB, &new_APB, alpha, 1 - alpha);
       APB->clear();
       APB = &new_APB;
 
-      graphblas::Matrix<float> new_AP(num_rows, num_cols);
-      add_matrix(AP, &AT, &new_AP, alpha, 1 - alpha);
+      graphblas::Matrix<float> new_AP(num_nodes, num_nodes);
+      add_matrix(AP, AT, &new_AP, alpha, 1 - alpha);
       AP->clear();
       AP = &new_AP;
 
     } else if(f1 < 0) {
       P->clear();
-      APB->clear();
-      AP->clear();
+      tmp = T;
+      T   = P;
+      P   = tmp;
 
-      P   = &T;
-      APB = &ATB;
-      AP  = &AT;
+      APB->clear();
+      tmp = ATB;
+      ATB = APB;
+      APB = tmp;
+
+      AP->clear();
+      tmp = AT;
+      AT  = AP;
+      AP  = tmp;
+
     } else {
       break;
     }
+
+// // <<
+//     // ----------------------------------------------------------------------
+//     // Read results
+
+//     int* h_person2item = (int*)malloc(num_nodes * sizeof(int));
+//     cudaMemcpy(h_person2item, d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToHost);
+//     APB->matrix_.sparse_.gpuToCpu();
+//     float score = 0;
+//     for (int i = 0; i < num_nodes; i++) {
+//       int start = APB->matrix_.sparse_.h_csrRowPtr_[i];
+//       int end   = APB->matrix_.sparse_.h_csrRowPtr_[i + 1];
+//       for(int j = start; j < end; j++) {
+//         if(APB->matrix_.sparse_.h_csrColInd_[j] == h_person2item[i]) {
+//           score += APB->matrix_.sparse_.h_csrVal_[j];
+//         }
+//       }
+//     }
+//     std::cout << "score=" << score << std::endl;
+// // >>
   }
 }
