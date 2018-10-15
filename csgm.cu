@@ -85,7 +85,7 @@ int main( int argc, char** argv )
     // Solve LAP
 
     int* d_person2item;
-    cudaMalloc((void **)&d_person2item,     num_nodes * sizeof(int));
+    cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
 
     int APB_num_edges; APB->nvals(&APB_num_edges);
     run_auction(
@@ -105,7 +105,6 @@ int main( int argc, char** argv )
         1,
         1
     );
-    cudaDeviceSynchronize(); // ?? Necessary
 
     float* d_ones;
     cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
@@ -115,7 +114,6 @@ int main( int argc, char** argv )
     cudaMalloc((void **)&d_ascending, (num_nodes+1) * sizeof(int));
     cudaMemcpy(d_ascending, h_ascending, (num_nodes + 1) * sizeof(int), cudaMemcpyHostToDevice);
 
-    T->clear();
     T->build(d_ascending, d_person2item, d_ones, num_nodes);
 
     // --------------------------
@@ -133,11 +131,6 @@ int main( int argc, char** argv )
     float APTB_trace = gpu_trace(AP, TB, &desc);
     float ATPB_trace = gpu_trace(AT, PB, &desc);
     float ATTB_trace = gpu_trace(AT, TB, &desc);
-
-    std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
-    std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
-    std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
-    std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
 
     float T_sum = (float)num_nodes;
     int P_num_values; P->nvals(&P_num_values);
@@ -192,10 +185,14 @@ int main( int argc, char** argv )
 
     float f1 = c - e;
 
+    std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
+    std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
+    std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
+    std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
     std::cerr << "ps_grad_P=  " << std::setprecision(9) << ps_grad_P  << std::endl;
     std::cerr << "ps_grad_T=  " << std::setprecision(9) << ps_grad_T  << std::endl;
     std::cerr << "ps_gradt_P= " << std::setprecision(9) << ps_gradt_P << std::endl;
-    std::cerr << "ps_gradt_T= " << std::setprecision(9) << ps_grad_T  << std::endl;
+    std::cerr << "ps_gradt_T= " << std::setprecision(9) << ps_gradt_T << std::endl;
     std::cerr << "alpha=      " << alpha << std::endl;
     std::cerr << "falpha=     " << falpha << std::endl;
     std::cerr << "f1=         " << f1 << std::endl;
@@ -218,6 +215,10 @@ int main( int argc, char** argv )
       AP = &new_AP;
 
     } else if(f1 < 0) {
+      P->clear();
+      AP->clear();
+      APB->clear();
+
       std::swap(P, T);
       std::swap(AP, AT);
       std::swap(APB, ATB);
