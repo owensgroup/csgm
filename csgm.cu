@@ -233,6 +233,7 @@ int main( int argc, char** argv )
       std::swap(P, T);
       std::swap(AP, AT);
       std::swap(APB, ATB);
+
       timer.Stop();
       std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
     } else {
