@@ -20,7 +20,7 @@
 
 int main( int argc, char** argv )
 {
-  bool DEBUG = false;
+  bool verbose = true;
   float tolerance = 1.0;
 
   // ----------------------------------------------------------------------
@@ -78,8 +78,12 @@ int main( int argc, char** argv )
   }
   h_ascending[num_nodes] = num_nodes;
 
+  CpuTimer timer;
   for(int iter = 0; iter < 20; iter++) {
-    std::cerr << "===== iter=" << iter << std::endl;
+    if(verbose) {
+      std::cerr << "===== iter=" << iter << " ================================" << std::endl;
+    }
+    timer.Start();
 
     // --------------------------
     // Solve LAP
@@ -185,18 +189,23 @@ int main( int argc, char** argv )
 
     float f1 = c - e;
 
-    std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
-    std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
-    std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
-    std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
-    std::cerr << "ps_grad_P=  " << std::setprecision(9) << ps_grad_P  << std::endl;
-    std::cerr << "ps_grad_T=  " << std::setprecision(9) << ps_grad_T  << std::endl;
-    std::cerr << "ps_gradt_P= " << std::setprecision(9) << ps_gradt_P << std::endl;
-    std::cerr << "ps_gradt_T= " << std::setprecision(9) << ps_gradt_T << std::endl;
-    std::cerr << "alpha=      " << alpha << std::endl;
-    std::cerr << "falpha=     " << falpha << std::endl;
-    std::cerr << "f1=         " << f1 << std::endl;
-    std::cerr << "============" << std::endl;
+    float num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
+
+    if(verbose) {
+      std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
+      std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
+      std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
+      std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
+      std::cerr << "ps_grad_P=  " << std::setprecision(9) << ps_grad_P  << std::endl;
+      std::cerr << "ps_grad_T=  " << std::setprecision(9) << ps_grad_T  << std::endl;
+      std::cerr << "ps_gradt_P= " << std::setprecision(9) << ps_gradt_P << std::endl;
+      std::cerr << "ps_gradt_T= " << std::setprecision(9) << ps_gradt_T << std::endl;
+      std::cerr << "alpha=      " << alpha << std::endl;
+      std::cerr << "falpha=     " << falpha << std::endl;
+      std::cerr << "f1=         " << f1 << std::endl;
+      std::cerr << "num_diff=   " << num_diff << std::endl;
+      std::cerr << "------------" << std::endl;
+    }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
       graphblas::Matrix<float> new_P(num_nodes, num_nodes);
@@ -214,6 +223,8 @@ int main( int argc, char** argv )
       AP->clear();
       AP = &new_AP;
 
+      timer.Stop();
+      std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
     } else if(f1 < 0) {
       P->clear();
       AP->clear();
@@ -222,28 +233,13 @@ int main( int argc, char** argv )
       std::swap(P, T);
       std::swap(AP, AT);
       std::swap(APB, ATB);
+      timer.Stop();
+      std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
     } else {
       break;
     }
 
-// // <<
-//     // ----------------------------------------------------------------------
-//     // Read results
-
-//     int* h_person2item = (int*)malloc(num_nodes * sizeof(int));
-//     cudaMemcpy(h_person2item, d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToHost);
-//     APB->matrix_.sparse_.gpuToCpu();
-//     float score = 0;
-//     for (int i = 0; i < num_nodes; i++) {
-//       int start = APB->matrix_.sparse_.h_csrRowPtr_[i];
-//       int end   = APB->matrix_.sparse_.h_csrRowPtr_[i + 1];
-//       for(int j = start; j < end; j++) {
-//         if(APB->matrix_.sparse_.h_csrColInd_[j] == h_person2item[i]) {
-//           score += APB->matrix_.sparse_.h_csrVal_[j];
-//         }
-//       }
-//     }
-//     std::cout << "score=" << score << std::endl;
-// // >>
   }
+  timer.Stop();
+  std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
 }
