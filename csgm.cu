@@ -1,6 +1,7 @@
 #define GRB_USE_APSPIE
 #define private public
 #include <iostream>
+#include <iomanip>
 #include <algorithm>
 #include <string>
 
@@ -19,7 +20,7 @@
 
 int main( int argc, char** argv )
 {
-  bool DEBUG = true;
+  bool DEBUG = false;
   float tolerance = 1.0;
 
   // ----------------------------------------------------------------------
@@ -40,19 +41,16 @@ int main( int argc, char** argv )
   graphblas::Index a_num_edges, b_num_edges;
 
   // Load A
-  std::cerr << "loading A" << std::endl;
   readMtx("data/A.mtx", a_row_indices, a_col_indices, a_values, num_rows, num_cols, a_num_edges, 0, false);
   graphblas::Matrix<float> A(num_rows, num_cols);
   A.build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
 
   // Load B
-  std::cerr << "loading B" << std::endl;
   readMtx("data/B.mtx", b_row_indices, b_col_indices, b_values, num_rows, num_cols, b_num_edges, 0, false);
   graphblas::Matrix<float> B(num_rows, num_cols);
   B.build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
 
-  // Creating P
-  std::cerr << "creating P" << std::endl;
+  // Create P
   for(graphblas::Index i = 0; i < NUM_SEEDS; i++) {
     p_row_indices.push_back(i);
     p_col_indices.push_back(i);
@@ -63,7 +61,7 @@ int main( int argc, char** argv )
   graphblas::Matrix<float>* P = &_P;
 
   // ----------------------------------------------------------------------
-  // Run SGM
+  // Allocation for intermediate/final results
 
   graphblas::Matrix<float>  _AP(num_rows, num_cols);
   graphblas::Matrix<float> _APB(num_rows, num_cols);
@@ -91,18 +89,15 @@ int main( int argc, char** argv )
   cudaMalloc((void **)&d_ascending, (num_rows+1) * sizeof(int));
   cudaMalloc((void **)&d_ones,          num_rows * sizeof(float));
 
-  cudaMemcpy(d_ascending, h_ascending, (num_rows+1) * sizeof(int),
-      cudaMemcpyHostToDevice);
-  cudaMemcpy(d_ones, h_ones, num_rows*sizeof(int),
-      cudaMemcpyHostToDevice);
+  cudaMemcpy(d_ascending, h_ascending, (num_rows+1) * sizeof(int), cudaMemcpyHostToDevice);
+  cudaMemcpy(d_ones, h_ones, num_rows*sizeof(int), cudaMemcpyHostToDevice);
 
   for(int iter = 0; iter < 20; iter++) {
-    std::cerr << "******** iter=" << iter << "**********" << std::endl;
+    std::cerr << "===== iter=" << iter << std::endl;
 
     // --------------------------
     // Solve LAP
 
-    std::cerr << "\t Solve LAP" << std::endl;
     int APB_num_edges; APB->nvals(&APB_num_edges);
     run_auction(
         num_rows,
@@ -121,28 +116,57 @@ int main( int argc, char** argv )
         1,
         1
     );
+    cudaDeviceSynchronize(); // ??
 
-    // Build T matrix from `h_person2item` -- could be faster?
-    cudaDeviceSynchronize();
+// <<
+    // ----------------------------------------------------------------------
+    // Read results
+    int* h_person2item = (int*)malloc(num_rows * sizeof(int));
+    cudaMemcpy(h_person2item, d_person2item, num_rows * sizeof(int), cudaMemcpyDeviceToHost);
+    APB->matrix_.sparse_.gpuToCpu();
+    float score = 0;
+    for (int i = 0; i < num_rows; i++) {
+      int start = APB->matrix_.sparse_.h_csrRowPtr_[i];
+      int end   = APB->matrix_.sparse_.h_csrRowPtr_[i + 1];
+      for(int j = start; j < end; j++) {
+        if(APB->matrix_.sparse_.h_csrColInd_[j] == h_person2item[i]) {
+          score += APB->matrix_.sparse_.h_csrVal_[j];
+        }
+      }
+    }
+    std::cout << "score=" << score << std::endl;
+// >>
+
+    float trace1 = -1;
+    if(iter > 0) {
+      trace1 = gpu_trace(P, &T, &desc);
+    }
     T.build(d_ascending, d_person2item, d_ones, num_rows);
+    float trace2 = gpu_trace(P, &T, &desc);
+
+    std::cerr << "trace1= " << std::setprecision(9) << trace1 << std::endl;
+    std::cerr << "trace2= " << std::setprecision(9) << trace2 << std::endl;
 
     // --------------------------
     // Matmuls
 
-    std::cerr << "\t Matrix multiply" << std::endl;
-    AT.clear(); A.print(); T.print(); easy_mxm(&AT,   &A, &T,  &desc);
-    ATB.clear(); AT.print(); B.print(); easy_mxm(&ATB, &AT, &B,  &desc);
-    PB.clear();  P->print(); B.print(); easy_mxm(&PB,    P, &B,  &desc);
-    TB.clear();  T.print(); B.print(); easy_mxm(&TB,   &T, &B,  &desc);
+    AT.clear();  easy_mxm(&AT,   &A, &T,  &desc);
+    ATB.clear(); easy_mxm(&ATB, &AT, &B,  &desc);
+    PB.clear();  easy_mxm(&PB,    P, &B,  &desc);
+    TB.clear();  easy_mxm(&TB,   &T, &B,  &desc);
 
     // --------------------------
     // Step size + convergence checking
 
-    std::cerr << "\t Check convergence" << std::endl;
     float APPB_trace = gpu_trace(AP, &PB, &desc);
     float APTB_trace = gpu_trace(AP, &TB, &desc);
     float ATPB_trace = gpu_trace(&AT, &PB, &desc);
     float ATTB_trace = gpu_trace(&AT, &TB, &desc);
+
+    std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
+    std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
+    std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
+    std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
 
     float T_sum = (float)num_rows;
     int P_num_values; P->nvals(&P_num_values);
@@ -197,6 +221,15 @@ int main( int argc, char** argv )
 
     float f1 = c - e;
 
+    std::cerr << "ps_grad_P=  " << std::setprecision(9) << ps_grad_P  << std::endl;
+    std::cerr << "ps_grad_T=  " << std::setprecision(9) << ps_grad_T  << std::endl;
+    std::cerr << "ps_gradt_P= " << std::setprecision(9) << ps_gradt_P << std::endl;
+    std::cerr << "ps_gradt_T= " << std::setprecision(9) << ps_grad_T  << std::endl;
+    std::cerr << "alpha=      " << alpha << std::endl;
+    std::cerr << "falpha=     " << falpha << std::endl;
+    std::cerr << "f1=         " << f1 << std::endl;
+    std::cerr << "============" << std::endl;
+
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
       graphblas::Matrix<float> new_P(num_rows, num_cols);
       add_matrix(P, &T, &new_P, alpha, 1 - alpha);
@@ -224,35 +257,5 @@ int main( int argc, char** argv )
     } else {
       break;
     }
-
-    std::cerr << "============"  << std::endl;
-    std::cerr << "ps_grad_P=  " << ps_grad_P  << std::endl;
-    std::cerr << "ps_grad_T=  " << ps_grad_T  << std::endl;
-    std::cerr << "ps_gradt_P= " << ps_gradt_P << std::endl;
-    std::cerr << "ps_gradt_T= " << ps_grad_T  << std::endl;
-    std::cerr << "alpha=      " << alpha << std::endl;
-    std::cerr << "falpha=     " << falpha << std::endl;
-    std::cerr << "f1=         " << f1 << std::endl;
-    std::cerr << "============"  << std::endl;
-    std::cerr << "BREAK AFTER FIRST ITERATION" << std::endl;
-    //break;
-
   }
-
-  // ----------------------------------------------------------------------
-  // Read results
-
-  // APB.matrix_.sparse_.gpuToCpu();
-  // float score = 0;
-  // for (int i = 0; i < num_rows; i++) {
-  //   // std::cout << i << " " << h_person2item[i] << std::endl;
-  //   int start = APB.matrix_.sparse_.h_csrRowPtr_[i];
-  //   int end   = APB.matrix_.sparse_.h_csrRowPtr_[i + 1];
-  //   for(int j = start; j < end; j++) {
-  //     if(APB.matrix_.sparse_.h_csrColInd_[j] == h_person2item[i]) {
-  //       score += APB.matrix_.sparse_.h_csrVal_[j];
-  //     }
-  //   }
-  // }
-  // std::cout << "score=" << score << std::endl;
 }
