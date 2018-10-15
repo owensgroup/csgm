@@ -218,21 +218,9 @@ int main( int argc, char** argv )
       AP = &new_AP;
 
     } else if(f1 < 0) {
-      P->clear();
-      tmp = T;
-      T   = P;
-      P   = tmp;
-
-      APB->clear();
-      tmp = ATB;
-      ATB = APB;
-      APB = tmp;
-
-      AP->clear();
-      tmp = AT;
-      AT  = AP;
-      AP  = tmp;
-
+      std::swap(P, T);
+      std::swap(AP, AT);
+      std::swap(APB, ATB);
     } else {
       break;
     }
