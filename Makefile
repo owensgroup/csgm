@@ -9,7 +9,7 @@ OPTIONS=-O3 -use_fast_math
 
 all: csgm
 
-csgm: csgm.cu utils.cu
+csgm: csgm.cu utils.cu timer.cuh
 	nvcc -g $(ARCH) $(OPTIONS) -w -std=c++11 -o csgm \
 		csgm.cu \
 	    $(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpucontext.cu \

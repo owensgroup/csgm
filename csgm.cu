@@ -15,19 +15,28 @@
 
 #include "auction.cu"
 #include "utils.cu"
+#include "timer.cuh"
 
 #define NUM_SEEDS 100
+#define NUM_ITERS 20
+#define TOLERANCE 1.0;
+
+typedef graphblas::Matrix<float> Matrix;
+typedef graphblas::Vector<float> Vector;
+
 
 int main( int argc, char** argv )
 {
-  bool verbose = true;
-  float tolerance = 1.0;
+  bool verbose  = true;
+  int num_seeds = NUM_SEEDS;
+  int num_iters = NUM_ITERS;
+  float tolerance = TOLERANCE;
 
   // ----------------------------------------------------------------------
   // CLI
 
   po::variables_map vm;
-  parseArgs( argc, argv, vm );
+  parseArgs(argc, argv, vm);
   graphblas::Descriptor desc;
   desc.loadArgs(vm);
 
@@ -46,17 +55,16 @@ int main( int argc, char** argv )
   // ----------------------------------------------------------------------
   // Initialize data structures
 
-  graphblas::Matrix<float>   _A(num_nodes, num_nodes); graphblas::Matrix<float>* A   = &_A;
-  graphblas::Matrix<float>   _B(num_nodes, num_nodes); graphblas::Matrix<float>* B   = &_B;
-  graphblas::Matrix<float>   _P(num_nodes, num_nodes); graphblas::Matrix<float>* P   = &_P;
-  graphblas::Matrix<float>  _AP(num_nodes, num_nodes); graphblas::Matrix<float>* AP  = &_AP;
-  graphblas::Matrix<float> _APB(num_nodes, num_nodes); graphblas::Matrix<float>* APB = &_APB;
-  graphblas::Matrix<float>   _T(num_nodes, num_nodes); graphblas::Matrix<float>* T   = &_T;
-  graphblas::Matrix<float>  _AT(num_nodes, num_nodes); graphblas::Matrix<float>* AT  = &_AT;
-  graphblas::Matrix<float> _ATB(num_nodes, num_nodes); graphblas::Matrix<float>* ATB = &_ATB;
-  graphblas::Matrix<float>  _PB(num_nodes, num_nodes); graphblas::Matrix<float>* PB  = &_PB;
-  graphblas::Matrix<float>  _TB(num_nodes, num_nodes); graphblas::Matrix<float>* TB  = &_TB;
-  graphblas::Matrix<float>* tmp;
+  Matrix   _A(num_nodes, num_nodes); Matrix* A   = &_A;
+  Matrix   _B(num_nodes, num_nodes); Matrix* B   = &_B;
+  Matrix   _P(num_nodes, num_nodes); Matrix* P   = &_P;
+  Matrix  _AP(num_nodes, num_nodes); Matrix* AP  = &_AP;
+  Matrix _APB(num_nodes, num_nodes); Matrix* APB = &_APB;
+  Matrix   _T(num_nodes, num_nodes); Matrix* T   = &_T;
+  Matrix  _AT(num_nodes, num_nodes); Matrix* AT  = &_AT;
+  Matrix _ATB(num_nodes, num_nodes); Matrix* ATB = &_ATB;
+  Matrix  _PB(num_nodes, num_nodes); Matrix* PB  = &_PB;
+  Matrix  _TB(num_nodes, num_nodes); Matrix* TB  = &_TB;
 
   A->build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
   B->build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
@@ -78,8 +86,8 @@ int main( int argc, char** argv )
   }
   h_ascending[num_nodes] = num_nodes;
 
-  CpuTimer timer;
-  for(int iter = 0; iter < 20; iter++) {
+  GpuTimer timer;
+  for(int iter = 0; iter < num_iters; iter++) {
     if(verbose) {
       std::cerr << "===== iter=" << iter << " ================================" << std::endl;
     }
@@ -92,6 +100,9 @@ int main( int argc, char** argv )
     cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
 
     int APB_num_edges; APB->nvals(&APB_num_edges);
+    if(verbose) {
+      std::cerr << "run_auction" << std::endl;
+    }
     run_auction(
         num_nodes,
         APB_num_edges,
@@ -109,6 +120,9 @@ int main( int argc, char** argv )
         1,
         1
     );
+    if(verbose) {
+      std::cerr << "done run_auction" << std::endl;
+    }
 
     float* d_ones;
     cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
@@ -131,26 +145,26 @@ int main( int argc, char** argv )
     // --------------------------
     // Step size + convergence checking
 
-    float APPB_trace = gpu_trace(AP, PB, &desc);
-    float APTB_trace = gpu_trace(AP, TB, &desc);
-    float ATPB_trace = gpu_trace(AT, PB, &desc);
-    float ATTB_trace = gpu_trace(AT, TB, &desc);
+    float APPB_trace = compute_trace(AP, PB, &desc);
+    float APTB_trace = compute_trace(AP, TB, &desc);
+    float ATPB_trace = compute_trace(AT, PB, &desc);
+    float ATTB_trace = compute_trace(AT, TB, &desc);
 
     float T_sum = (float)num_nodes;
     int P_num_values; P->nvals(&P_num_values);
     float P_sum = sum_reduce(P->matrix_.sparse_.d_csrVal_, P_num_values);
 
-    graphblas::Vector<float> AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
-    graphblas::Vector<float> AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
-    graphblas::Vector<float> B_rowsum(num_nodes);  rowsum( &B_rowsum,   B, &desc);
+    Vector AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
+    Vector AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
+    Vector B_rowsum(num_nodes);  rowsum( &B_rowsum,   B, &desc);
 
-    graphblas::Vector<float> PAP_sum(num_nodes); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
-    graphblas::Vector<float> PAT_sum(num_nodes); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
-    graphblas::Vector<float> TAP_sum(num_nodes); easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
-    graphblas::Vector<float> TAT_sum(num_nodes); easy_mxv(&TAT_sum,  T, &AT_rowsum, &desc);
+    Vector PAP_sum(num_nodes); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
+    Vector PAT_sum(num_nodes); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
+    Vector TAP_sum(num_nodes); easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
+    Vector TAT_sum(num_nodes); easy_mxv(&TAT_sum,  T, &AT_rowsum, &desc);
 
-    graphblas::Vector<float> BP_sum(num_nodes); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
-    graphblas::Vector<float> BT_sum(num_nodes); easy_vxm(&BT_sum, &B_rowsum, T, &desc);
+    Vector BP_sum(num_nodes); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
+    Vector BT_sum(num_nodes); easy_vxm(&BT_sum, &B_rowsum, T, &desc);
 
     float PAP_sum_sum = sum_reduce(PAP_sum.vector_.dense_.d_val_, num_nodes);
     float PAT_sum_sum = sum_reduce(PAT_sum.vector_.dense_.d_val_, num_nodes);
@@ -192,10 +206,10 @@ int main( int argc, char** argv )
     float num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
 
     if(verbose) {
-      std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
-      std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
-      std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
-      std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
+      // std::cerr << "APPB_trace= " << std::setprecision(9) << APPB_trace << std::endl;
+      // std::cerr << "APTB_trace= " << std::setprecision(9) << APTB_trace << std::endl;
+      // std::cerr << "ATPB_trace= " << std::setprecision(9) << ATPB_trace << std::endl;
+      // std::cerr << "ATTB_trace= " << std::setprecision(9) << ATTB_trace << std::endl;
       std::cerr << "ps_grad_P=  " << std::setprecision(9) << ps_grad_P  << std::endl;
       std::cerr << "ps_grad_T=  " << std::setprecision(9) << ps_grad_T  << std::endl;
       std::cerr << "ps_gradt_P= " << std::setprecision(9) << ps_gradt_P << std::endl;
@@ -208,20 +222,11 @@ int main( int argc, char** argv )
     }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
-      graphblas::Matrix<float> new_P(num_nodes, num_nodes);
-      add_matrix(P, T, &new_P, alpha, 1 - alpha);
-      P->clear();
-      P = &new_P;
+      std::cerr << "********************** convex combination *************************" << std::endl;
 
-      graphblas::Matrix<float> new_APB(num_nodes, num_nodes);
-      add_matrix(APB, ATB, &new_APB, alpha, 1 - alpha);
-      APB->clear();
-      APB = &new_APB;
-
-      graphblas::Matrix<float> new_AP(num_nodes, num_nodes);
-      add_matrix(AP, AT, &new_AP, alpha, 1 - alpha);
-      AP->clear();
-      AP = &new_AP;
+      spmm_convex_combination(P, T, alpha, 1 - alpha);
+      spmm_convex_combination(APB, ATB, alpha, 1 - alpha);
+      spmm_convex_combination(AP, AT, alpha, 1 - alpha);
 
       timer.Stop();
       std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;

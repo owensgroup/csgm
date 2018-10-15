@@ -12,19 +12,9 @@
 #include <curand.h>
 #include <curand_kernel.h>
 
-// --
-// Define constants
-
-
-#define __RUN_VARS
-#define MAX_NODES       20000 // Dimension of problem
-#define BLOCKSIZE       32    // How best to set this?
-#define AUCTION_MAX_EPS 1.0   // Larger values mean solution is more approximate
-#define AUCTION_MIN_EPS 1.0
-#define AUCTION_FACTOR  0.0
-#define NUM_RUNS        10
-
 #include "auction_kernel_csr.cu"
+
+#define BLOCKSIZE 32   // How best to set this?
 
 int run_auction(
     int    num_nodes,
@@ -44,9 +34,16 @@ int run_auction(
     int verbose
 )
 {
-    float* h_data    = (float*)malloc(num_edges * sizeof(float));
-    int*   h_offsets = (int*)malloc((num_nodes + 1) * sizeof(int));
-    int*   h_columns = (int*)malloc(num_edges * sizeof(int));
+    // float* h_data    = (float*)malloc(num_edges * sizeof(float));
+    // int*   h_offsets = (int*)malloc((num_nodes + 1) * sizeof(int));
+    // int*   h_columns = (int*)malloc(num_edges * sizeof(int));
+    // std::cerr << "num_edges=" << num_edges << std::endl;
+    // cudaMemcpy(h_columns, d_columns, num_edges * sizeof(int), cudaMemcpyDeviceToHost);
+    // cudaMemcpy(h_data, d_data, num_edges * sizeof(float), cudaMemcpyDeviceToHost);
+    // for(int i = 0; i < 20; i++) {
+    //     std::cerr << "h_columns[" << i << "]=" << h_columns[i] << std::endl;
+    //     std::cerr << "   h_data[" << i << "]=" << h_data[i] << std::endl;
+    // }
 
     // --
     // CUDA options
@@ -62,7 +59,6 @@ int run_auction(
 
     float* d_bids;
     float* d_prices;
-    int*   d_bidders;
     int*   d_sbids;
     int    h_numAssign;
     int*   d_numAssign;
@@ -76,8 +72,7 @@ int run_auction(
     cudaMalloc((void **)&d_prices,      num_nodes             * sizeof(float));
     cudaMalloc((void **)&d_sbids,       num_nodes             * sizeof(int));
     cudaMalloc((void **)&d_bids,        num_nodes * num_nodes * sizeof(float));
-    cudaMalloc((void **)&d_bidders,     num_nodes * num_nodes * sizeof(int)); // unused
-    cudaMalloc((void **)&d_rand,        num_nodes * num_nodes * sizeof(float)) ;
+    cudaMalloc((void **)&d_rand,        num_nodes * num_nodes * sizeof(float));
 
     // --
     // Copy from host to device
@@ -100,7 +95,6 @@ int run_auction(
         float auction_eps = auction_max_eps;
         while(auction_eps >= auction_min_eps) {
             h_numAssign = 0;
-            cudaMemset(d_bidders,        0, num_nodes * num_nodes * sizeof(int)); // unused
             cudaMemset(d_person2item,   -1, num_nodes * sizeof(int));
             cudaMemset(d_item2person,   -1, num_nodes * sizeof(int));
             cudaMemset(d_numAssign,      0, 1         * sizeof(int));
@@ -122,7 +116,6 @@ int run_auction(
 
                     d_person2item,
                     d_bids,
-                    d_bidders,
                     d_sbids,
                     d_prices,
                     auction_eps,
@@ -133,7 +126,6 @@ int run_auction(
                     d_person2item,
                     d_item2person,
                     d_bids,
-                    d_bidders,
                     d_sbids,
                     d_prices,
                     d_numAssign
@@ -170,7 +162,6 @@ int run_auction(
     cudaFree(d_item2person);
     cudaFree(d_bids);
     cudaFree(d_prices);
-    cudaFree(d_bidders);
     cudaFree(d_sbids);
     cudaFree(d_numAssign);
     cudaFree(d_rand);

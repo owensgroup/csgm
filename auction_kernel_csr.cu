@@ -1,6 +1,6 @@
 #ifndef __AUCTION_VARS
-#define DETERMINISTIC
 #define EMPTY_COL -99
+#define BIG_NEGATIVE -999999
 #endif
 
 __global__ void run_bidding(
@@ -12,7 +12,6 @@ __global__ void run_bidding(
 
     int *person2item,
     float *bids,
-    int *bidders,
     int *sbids,
     float *prices,
     float auction_eps,
@@ -28,8 +27,8 @@ __global__ void run_bidding(
             int end_idx   = offsets[i + 1];
 
             int top1_col;
-            float top1_val = -999999;
-            float top2_val = -999999;
+            float top1_val = BIG_NEGATIVE;
+            float top2_val = BIG_NEGATIVE;
 
             int col;
             float tmp_val;
@@ -39,7 +38,7 @@ __global__ void run_bidding(
                 tmp_val = -prices[col];
                 if(tmp_val >= top1_val) {
                     if(
-                        (tmp_val > top1_val)// ||
+                        (tmp_val > top1_val) // ||
                         // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col])
                     ) {
                         top2_val = top1_val;
@@ -60,7 +59,7 @@ __global__ void run_bidding(
                 if(tmp_val >= top1_val) {
                     // If lots of entries have the same value, it's important to break ties
                     if(
-                        (tmp_val > top1_val)// ||
+                        (tmp_val > top1_val) // ||
                         // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col])
                     ) {
                         top2_val = top1_val;
@@ -73,14 +72,8 @@ __global__ void run_bidding(
             }
 
             float bid = top1_val - top2_val + auction_eps;
-#ifdef DETERMINISTIC
             bids[num_nodes * top1_col + i] = bid;
             atomicMax(sbids + top1_col, 1);
-#else
-            int idx = atomicAdd(sbids + top1_col, 1);
-            bids[num_nodes * idx + top1_col] = bid;
-            bidders[num_nodes * idx + top1_col] = i;
-#endif
         }
     }
 }
@@ -91,7 +84,6 @@ __global__ void run_assignment(
     int *person2item,
     int *item2person,
     float *bids,
-    int *bidders,
     int *sbids,
     float *prices,
     int *num_assigned
@@ -100,7 +92,6 @@ __global__ void run_assignment(
 
     int j = blockDim.x * blockIdx.x + threadIdx.x; // item index
     if(j < num_nodes) {
-#ifdef DETERMINISTIC
         if(sbids[j] != 0) {
             float high_bid  = -1;
             int high_bidder = -1;
@@ -113,21 +104,7 @@ __global__ void run_assignment(
                     high_bidder = i;
                 }
             }
-#else
-        int num_bidders = sbids[j];
-        if(num_bidders != 0) {
-            float high_bid  = bids[j];
-            int high_bidder = bidders[j];
 
-            float tmp_bid = -1.0;
-            for(int idx = 1; idx < num_bidders; idx++){
-                tmp_bid = bids[num_nodes * idx + j];
-                if(tmp_bid > high_bid){
-                    high_bid    = tmp_bid;
-                    high_bidder = bidders[num_nodes * idx + j];
-                }
-            }
-#endif
             int current_person = item2person[j];
             if(current_person != -1){
                 person2item[current_person] = -1;
