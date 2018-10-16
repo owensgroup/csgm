@@ -1,28 +1,27 @@
-
-GRAPHBLAS_PATH=/home/bjohnson/projects/davis/GraphBLAS
-
-ARCH=\
-  -gencode arch=compute_60,code=compute_60 \
-  -gencode arch=compute_60,code=sm_60
-
+ARCH=-gencode arch=compute_60,code=compute_60 -gencode arch=compute_60,code=sm_60
 OPTIONS=-O3 -use_fast_math
 
-all: csgm
+all: check-env csgm
 
-csgm: csgm.cu utils.cu timer.cuh
+csgm: src/*
 	nvcc -g $(ARCH) $(OPTIONS) -w -std=c++11 -o csgm \
 		csgm.cu \
-	    $(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpucontext.cu \
-	    $(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpuutil.cpp \
-	    -I$(GRAPHBLAS_PATH)/ext/moderngpu/include \
-	    -I$(GRAPHBLAS_PATH)/ext/cub/cub \
-	    -I$(GRAPHBLAS_PATH)/ \
-	    -I/usr/local/cuda/samples/common/inc/ \
-	    -lboost_program_options \
-	    -lcublas \
-	    -lcusparse \
-	    -lcurand
+		$(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpucontext.cu \
+		$(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpuutil.cpp \
+		-I$(GRAPHBLAS_PATH)/ext/moderngpu/include \
+		-I$(GRAPHBLAS_PATH)/ext/cub/cub \
+		-I$(GRAPHBLAS_PATH)/ \
+		-Isrc/ \
+		-I/usr/local/cuda/samples/common/inc/ \
+		-lboost_program_options \
+		-lcublas \
+		-lcusparse \
+		-lcurand
 
 clean:
 	rm -f csgm
 	
+check-env:
+ifndef GRAPHBLAS_PATH
+	$(error `GRAPHBLAS_PATH` is undefined)
+endif

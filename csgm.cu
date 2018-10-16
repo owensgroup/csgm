@@ -8,35 +8,37 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <boost/program_options.hpp>
-
 #include "graphblas/graphblas.hpp"
 #include "test/test.hpp"
 
+#include "cli.h"
 #include "auction.cu"
 #include "utils.cu"
 #include "timer.cuh"
 
-#define NUM_SEEDS 100
-#define NUM_ITERS 20
-#define TOLERANCE 1.0;
-
 typedef graphblas::Matrix<float> Matrix;
 typedef graphblas::Vector<float> Vector;
 
-
 int main( int argc, char** argv )
 {
-  bool verbose  = false;
-  int num_seeds = NUM_SEEDS;
-  int num_iters = NUM_ITERS;
-  float tolerance = TOLERANCE;
+  bool verbose  = true;
 
   // ----------------------------------------------------------------------
   // CLI
 
   po::variables_map vm;
-  parseArgs(argc, argv, vm);
+
+  parseArgsSGM(argc, argv, vm);
+  int num_seeds;
+  try {
+    num_seeds = vm["num-seeds"].as<int>();
+  } catch(const std::exception& e) {
+    std::cerr << "csgm: must specify `--num-seeds`" << std::endl;
+    exit(1);
+  }
+  int num_iters   = vm["num-iters"].as<int>();
+  float tolerance = vm["tolerance"].as<float>();
+
   graphblas::Descriptor desc;
   desc.loadArgs(vm);
 
@@ -49,8 +51,11 @@ int main( int argc, char** argv )
   graphblas::Index num_nodes;
   graphblas::Index a_num_edges, b_num_edges;
 
-  readMtx("data/A.mtx", a_row_indices, a_col_indices, a_values, num_nodes, num_nodes, a_num_edges, 0, false);
-  readMtx("data/B.mtx", b_row_indices, b_col_indices, b_values, num_nodes, num_nodes, b_num_edges, 0, false);
+  std::string A_path = vm["A"].as<std::string>();
+  std::string B_path = vm["B"].as<std::string>();
+
+  readMtx(A_path.c_str(), a_row_indices, a_col_indices, a_values, num_nodes, num_nodes, a_num_edges, 0, false);
+  readMtx(B_path.c_str(), b_row_indices, b_col_indices, b_values, num_nodes, num_nodes, b_num_edges, 0, false);
 
   // ----------------------------------------------------------------------
   // Initialize data structures
@@ -69,12 +74,12 @@ int main( int argc, char** argv )
   A->build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
   B->build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
 
-  for(graphblas::Index i = 0; i < NUM_SEEDS; i++) {
+  for(graphblas::Index i = 0; i < num_seeds; i++) {
     p_row_indices.push_back(i);
     p_col_indices.push_back(i);
     p_values.push_back(1.0f);
   }
-  P->build(&p_row_indices, &p_col_indices, &p_values, NUM_SEEDS, GrB_NULL);
+  P->build(&p_row_indices, &p_col_indices, &p_values, num_seeds, GrB_NULL);
   easy_mxm(AP,   A, P, &desc);
   easy_mxm(APB, AP, B, &desc);
 

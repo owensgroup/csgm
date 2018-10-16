@@ -36,5 +36,5 @@ if __name__ == "__main__":
     P = sparse.csr_matrix((p_data, (p_rows, p_cols)))
     B = P.dot(A).dot(P.T)
     
-    mmwrite('A', A, symmetry='symmetric')
-    mmwrite('B', B, symmetry='symmetric')
+    mmwrite('data/A', A, symmetry='symmetric')
+    mmwrite('data/B', B, symmetry='symmetric')
