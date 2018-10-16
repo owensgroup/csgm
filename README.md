@@ -4,6 +4,10 @@ CUDA seeded graph matchin implementation.
 
 Currently, only tested on undirected, unweighted graphs.
 
+#### Usage
+
+See `run.sh` for usage.
+
 #### Todo
 - [ ] Profiling
 - [ ] Test on connectome graphs

@@ -12,3 +12,4 @@ make
 
 # python data/make-random.py --num-seeds 100
 ./csgm --A data/A.mtx --B data/B.mtx --num-seeds 100 --sgm-debug 1
+

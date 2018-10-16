@@ -14,7 +14,7 @@
 
 #include "auction_kernel_csr.cu"
 
-#define THREADS 1024
+#define THREADS 8
 
 int run_auction(
     int    num_nodes,
