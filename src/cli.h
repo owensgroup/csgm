@@ -73,7 +73,8 @@ void parseArgsSGM(int argc, char**argv, po::variables_map& vm) {
     ("num-iters", po::value<int>()->default_value(20),                                "number of iterations" )
     ("tolerance", po::value<float>()->default_value(1.0),                             "convergence tolerance")
     ("A",         po::value<std::string>()->default_value((std::string)"data/A.mtx"), "path to A.mtx"        )
-    ("B",         po::value<std::string>()->default_value((std::string)"data/B.mtx"), "path to B.mtx"        );
+    ("B",         po::value<std::string>()->default_value((std::string)"data/B.mtx"), "path to B.mtx"        )
+    ("sgm-debug", po::value<bool>()->default_value(false),                            "print SGM debug info" );
 
   po::store(po::parse_command_line(argc, argv, desc), vm);
   po::notify(vm);

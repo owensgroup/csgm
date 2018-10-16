@@ -14,7 +14,7 @@
 
 #include "auction_kernel_csr.cu"
 
-#define BLOCKSIZE 32   // How best to set this?
+#define THREADS 1024
 
 int run_auction(
     int    num_nodes,
@@ -45,12 +45,7 @@ int run_auction(
     //     std::cerr << "   h_data[" << i << "]=" << h_data[i] << std::endl;
     // }
 
-    // --
-    // CUDA options
-
-    dim3 dimBlock(BLOCKSIZE, 1, 1);
-    int gx = ceil(num_nodes / (double) dimBlock.x);
-    dim3 dimGrid(gx, 1, 1);
+    int block = 1 + num_nodes / THREADS;
 
     // --
     // Declare variables
@@ -105,9 +100,8 @@ int run_auction(
                 counter += 1;
                 cudaMemset(d_bids,  0, num_nodes * num_nodes * sizeof(float));
                 cudaMemset(d_sbids, 0, num_nodes * sizeof(int));
-                cudaThreadSynchronize();
 
-                run_bidding<<<dimBlock, dimGrid>>>(
+                run_bidding<<<block, THREADS>>>(
                     num_nodes,
 
                     d_data,
@@ -121,7 +115,7 @@ int run_auction(
                     auction_eps,
                     d_rand
                 );
-                run_assignment<<<dimBlock, dimGrid>>>(
+                run_assignment<<<block, THREADS>>>(
                     num_nodes,
                     d_person2item,
                     d_item2person,
@@ -130,7 +124,6 @@ int run_auction(
                     d_prices,
                     d_numAssign
                 );
-                cudaThreadSynchronize();
 
                 cudaMemcpy(&h_numAssign, d_numAssign, sizeof(int) * 1, cudaMemcpyDeviceToHost);
                 // std::cerr << "h_numAssign=" << h_numAssign << std::endl;

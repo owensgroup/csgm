@@ -21,8 +21,6 @@ typedef graphblas::Vector<float> Vector;
 
 int main( int argc, char** argv )
 {
-  bool verbose  = true;
-
   // ----------------------------------------------------------------------
   // CLI
 
@@ -38,6 +36,7 @@ int main( int argc, char** argv )
   }
   int num_iters   = vm["num-iters"].as<int>();
   float tolerance = vm["tolerance"].as<float>();
+  bool verbose    = vm["sgm-debug"].as<bool>();
 
   graphblas::Descriptor desc;
   desc.loadArgs(vm);

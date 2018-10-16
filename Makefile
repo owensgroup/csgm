@@ -5,7 +5,7 @@ all: check-env csgm
 
 csgm: src/*
 	nvcc -g $(ARCH) $(OPTIONS) -w -std=c++11 -o csgm \
-		csgm.cu \
+		src/csgm.cu \
 		$(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpucontext.cu \
 		$(GRAPHBLAS_PATH)/ext/moderngpu/src/mgpuutil.cpp \
 		-I$(GRAPHBLAS_PATH)/ext/moderngpu/include \
