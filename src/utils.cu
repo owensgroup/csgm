@@ -9,8 +9,7 @@ void rowsum(
   graphblas::Descriptor* desc
 )
 {
-  graphblas::reduce<float,float,float>(out, GrB_NULL, GrB_NULL,
-    graphblas::PlusMonoid<float>(), X, desc);
+  graphblas::reduce<float,float,float>(out, GrB_NULL, GrB_NULL, graphblas::PlusMonoid<float>(), X, desc);
 }
 
 void easy_mxv(
