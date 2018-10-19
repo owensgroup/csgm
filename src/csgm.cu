@@ -118,6 +118,7 @@ int main(int argc, char** argv)
     // Solve LAP
 
     int APB_num_entries; APB->nvals(&APB_num_entries);
+    std::cerr << "APB_num_entries=" << APB_num_entries << std::endl;
     run_auction(
         num_nodes,
         APB_num_entries,
@@ -135,6 +136,7 @@ int main(int argc, char** argv)
         1,
         int(verbose)
     );
+
 
     cudaMemcpy(T->matrix_.sparse_.d_csrColInd_, d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToDevice);
 
@@ -154,10 +156,10 @@ int main(int argc, char** argv)
     float ATPB_trace;
     float ATTB_trace;
 
-    graphblas::trace(&APPB_trace, graphblas::PlusMultipliesSemiring<float>(), AP, PB, &desc);
-    graphblas::trace(&APTB_trace, graphblas::PlusMultipliesSemiring<float>(), AP, TB, &desc);
-    graphblas::trace(&ATPB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, PB, &desc);
-    graphblas::trace(&ATTB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, TB, &desc);
+    graphblas::traceMxmTranspose(&APPB_trace, graphblas::PlusMultipliesSemiring<float>(), AP, PB, &desc);
+    graphblas::traceMxmTranspose(&APTB_trace, graphblas::PlusMultipliesSemiring<float>(), AP, TB, &desc);
+    graphblas::traceMxmTranspose(&ATPB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, PB, &desc);
+    graphblas::traceMxmTranspose(&ATTB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, TB, &desc);
 
     FloatVector AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
     FloatVector AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
@@ -181,6 +183,11 @@ int main(int argc, char** argv)
     float BT_sum_sum  = sum_reduce(BT_sum.vector_.sparse_.d_val_, num_nodes);
 
     float ps_grad_P  = 4 * APPB_trace + (float)num_nodes * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
+    std::cerr << "APPB_trace  = " << std::setprecision(9) << APPB_trace << std::endl;
+    std::cerr << "P_sum       = " << P_sum << std::endl;
+    std::cerr << "PAP_sum_sum = " << PAP_sum_sum << std::endl;
+    std::cerr << "BP_sum_sum  = " << BP_sum_sum << std::endl;
+    break;
     float ps_gradt_P = 4 * ATPB_trace + (float)num_nodes * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
     float ps_grad_T  = 4 * APTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAP_sum_sum + BT_sum_sum);
     float ps_gradt_T = 4 * ATTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAT_sum_sum + BT_sum_sum);
@@ -244,7 +251,7 @@ int main(int argc, char** argv)
     std::cerr << "iter_timer=" << iter_timer.ElapsedMillis() << std::endl;
 
   }
-  timer.Stop();
+  iter_timer.Stop();
   std::cerr << "iter_timer=" << iter_timer.ElapsedMillis() << std::endl;
 
   total_timer.Stop();

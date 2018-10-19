@@ -25,6 +25,8 @@ __global__ void run_bidding(
 
             int start_idx = offsets[i];
             int end_idx   = offsets[i + 1];
+            // printf("i=%d | num_entries=%d\n", i, end_idx - start_idx);
+            // if(start_idx == end_idx) return;
 
             int top1_col;
             float top1_val = BIG_NEGATIVE;
@@ -32,6 +34,23 @@ __global__ void run_bidding(
 
             int col;
             float tmp_val;
+
+            // Check all of the zero entries
+            for(int col = 0; col < num_nodes; col++) {
+                tmp_val = -prices[col];
+                if(tmp_val >= top1_val) {
+                    if(
+                        (tmp_val > top1_val) // ||
+                        // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
+                    ) {
+                        top2_val = top1_val;
+                        top1_col = col;
+                        top1_val = tmp_val;
+                    }
+                } else if(tmp_val > top2_val) {
+                    top2_val = tmp_val;
+                }
+            }
 
             // Check nonzero entries
             for(int idx = start_idx; idx < end_idx; idx++){
@@ -53,25 +72,9 @@ __global__ void run_bidding(
                 }
             }
 
+            // if(top2_val == BIG_NEGATIVE) {
 
-            if(top2_val == BIG_NEGATIVE) {
-                // Check all of the zero entries
-                for(int col = 0; col < num_nodes; col++) {
-                    tmp_val = -prices[col];
-                    if(tmp_val >= top1_val) {
-                        if(
-                            (tmp_val > top1_val) // ||
-                            // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
-                        ) {
-                            top2_val = top1_val;
-                            top1_col = col;
-                            top1_val = tmp_val;
-                        }
-                    } else if(tmp_val > top2_val) {
-                        top2_val = tmp_val;
-                    }
-                }
-            }
+            // }
 
             float bid = top1_val - top2_val + auction_eps;
             bids[num_nodes * top1_col + i] = bid;

@@ -16,6 +16,8 @@
 
 #define THREADS 8
 
+// #define DEBUG
+
 int run_auction(
     int    num_nodes,
     int    num_edges,
@@ -126,6 +128,10 @@ int run_auction(
                 );
 
                 cudaMemcpy(&h_numAssign, d_numAssign, sizeof(int) * 1, cudaMemcpyDeviceToHost);
+#ifdef DEBUG
+                std::cerr << "counter=" << counter << " | h_numAssign=" << h_numAssign << std::endl;
+                // if(counter > 1000) break;
+#endif
             }
             if(verbose) {
                 std::cerr << "counter=" << counter << std::endl;
