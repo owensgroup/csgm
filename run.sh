@@ -6,7 +6,6 @@
 # python make-data.py
 # cd ..
 
-export GRAPHBLAS_PATH=$HOME/projects/davis/GraphBLAS
 make clean
 make
 
