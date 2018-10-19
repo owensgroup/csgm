@@ -104,12 +104,15 @@ int main(int argc, char** argv)
   cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
   init_T(T, d_ascending, d_person2item, d_ones, num_nodes);
 
-  GpuTimer timer;
+  GpuTimer iter_timer;
+  GpuTimer total_timer;
+  total_timer.Start();
+  float num_diff;
   for(int iter = 0; iter < num_iters; iter++) {
     if(verbose) {
       std::cerr << "===== iter=" << iter << " ================================" << std::endl;
     }
-    timer.Start();
+    iter_timer.Start();
 
     // --------------------------
     // Solve LAP
@@ -178,8 +181,8 @@ int main(int argc, char** argv)
     float BT_sum_sum  = sum_reduce(BT_sum.vector_.sparse_.d_val_, num_nodes);
 
     float ps_grad_P  = 4 * APPB_trace + (float)num_nodes * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
-    float ps_grad_T  = 4 * APTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAP_sum_sum + BT_sum_sum);
     float ps_gradt_P = 4 * ATPB_trace + (float)num_nodes * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
+    float ps_grad_T  = 4 * APTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAP_sum_sum + BT_sum_sum);
     float ps_gradt_T = 4 * ATTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAT_sum_sum + BT_sum_sum);
 
     // --
@@ -202,7 +205,7 @@ int main(int argc, char** argv)
     }
 
     float f1 = ps_grad_P - ps_gradt_T;
-    float num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
+    num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
 
     if(verbose) {
       std::cerr << "APPB_trace = " << std::setprecision(9) << APPB_trace << std::endl;
@@ -213,11 +216,11 @@ int main(int argc, char** argv)
       std::cerr << "ps_grad_T  = " << std::setprecision(9) << ps_grad_T  << std::endl;
       std::cerr << "ps_gradt_P = " << std::setprecision(9) << ps_gradt_P << std::endl;
       std::cerr << "ps_gradt_T = " << std::setprecision(9) << ps_gradt_T << std::endl;
-      std::cerr << "alpha      = " << alpha << std::endl;
-      std::cerr << "falpha     = " << falpha << std::endl;
-      std::cerr << "f1         = " << f1 << std::endl;
+      std::cerr << "alpha      = " << std::setprecision(9) << alpha << std::endl;
+      std::cerr << "falpha     = " << std::setprecision(9) << falpha << std::endl;
+      std::cerr << "f1         = " << std::setprecision(9) << f1 << std::endl;
       std::cerr << "num_diff   = " << num_diff << std::endl;
-      std::cerr << "------------" << std::endl;
+      std::cerr << "------------"  << std::endl;
     }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
@@ -233,13 +236,17 @@ int main(int argc, char** argv)
       P->dup(T);
       AP->dup(AT);
       APB->dup(ATB);
+
     } else {
       break;
     }
-    timer.Stop();
-    std::cerr << "timer=" << timer.ElapsedMillis() << std::endl;
+    iter_timer.Stop();
+    std::cerr << "iter_timer=" << iter_timer.ElapsedMillis() << std::endl;
 
   }
   timer.Stop();
-  std::cerr << "timer=" << timer.ElapsedMillis() " | num_diff=" << num_diff << std::endl;
+  std::cerr << "iter_timer=" << iter_timer.ElapsedMillis() << std::endl;
+
+  total_timer.Stop();
+  std::cerr << "total_timer=" << total_timer.ElapsedMillis() << " | num_diff=" << num_diff << std::endl;
 }

@@ -126,7 +126,6 @@ int run_auction(
                 );
 
                 cudaMemcpy(&h_numAssign, d_numAssign, sizeof(int) * 1, cudaMemcpyDeviceToHost);
-                // std::cerr << "h_numAssign=" << h_numAssign << std::endl;
             }
             if(verbose) {
                 std::cerr << "counter=" << counter << std::endl;
