@@ -163,26 +163,10 @@ int main(int argc, char** argv)
 
     FloatVector AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
     FloatVector AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
+    FloatVector B_rowsum(num_nodes); rowsum( &B_rowsum,  B, &desc);
 
-// >>> HACK
-    FloatVector _B_rowsum(num_nodes); rowsum( &_B_rowsum,  B, &desc);
-    FloatMatrix B_rowsum(1, num_nodes);
-
-    std::vector<int> dummy_row, dummy_col;
-    std::vector<float> dummy_val;
-
-    _B_rowsum.vector_.dense_.gpuToCpu();
-    for(int i = 0; i < num_nodes; i++) {
-      dummy_row.push_back(0);
-      dummy_col.push_back(i);
-      dummy_val.push_back(_B_rowsum.vector_.dense_.h_val_[i]);
-    }
-
-    B_rowsum.build(&dummy_row, &dummy_col, &dummy_val, num_nodes, GrB_NULL);
-    FloatMatrix BP_sum(1, num_nodes); easy_mxm(&BP_sum, &B_rowsum, P, &desc);
-    FloatMatrix BT_sum(1, num_nodes); easy_mxm(&BT_sum, &B_rowsum, T, &desc);
-// <<< HACK
-
+    FloatVector BP_sum(num_nodes); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
+    FloatVector BT_sum(num_nodes); easy_vxm(&BT_sum, &B_rowsum, T, &desc);
     FloatVector PAP_sum(num_nodes); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
     FloatVector PAT_sum(num_nodes); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
     FloatVector TAP_sum(num_nodes); easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
@@ -193,10 +177,8 @@ int main(int argc, char** argv)
     int BT_sum_num_values; BT_sum.nvals(&BT_sum_num_values);
 
     float P_sum      = sum_reduce(P->matrix_.sparse_.d_csrVal_, P_num_values);
-// >>> HACK
-    float BP_sum_sum = sum_reduce(BP_sum.matrix_.sparse_.d_csrVal_, BP_sum_num_values);
-    float BT_sum_sum = sum_reduce(BT_sum.matrix_.sparse_.d_csrVal_, BT_sum_num_values);
-// <<< HACK
+    float BP_sum_sum = sum_reduce(BP_sum.vector_.sparse_.d_val_, BP_sum_num_values);
+    float BT_sum_sum = sum_reduce(BT_sum.vector_.sparse_.d_val_, BT_sum_num_values);
 
     float PAP_sum_sum = sum_reduce(PAP_sum.vector_.dense_.d_val_, num_nodes);
     float PAT_sum_sum = sum_reduce(PAT_sum.vector_.dense_.d_val_, num_nodes);
@@ -204,10 +186,6 @@ int main(int argc, char** argv)
     float TAT_sum_sum = sum_reduce(TAT_sum.vector_.dense_.d_val_, num_nodes);
 
     float ps_grad_P  = 4 * APPB_trace + (float)num_nodes * P_sum - 2 * (PAP_sum_sum + BP_sum_sum);
-    // std::cerr << "APPB_trace  = " << std::setprecision(9) << APPB_trace << std::endl;
-    // std::cerr << "P_sum       = " << P_sum << std::endl;
-    // std::cerr << "PAP_sum_sum = " << PAP_sum_sum << std::endl;
-    // std::cerr << "BP_sum_sum  = " << BP_sum_sum << std::endl;
     float ps_gradt_P = 4 * ATPB_trace + (float)num_nodes * P_sum - 2 * (PAT_sum_sum + BP_sum_sum);
     float ps_grad_T  = 4 * APTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAP_sum_sum + BT_sum_sum);
     float ps_gradt_T = 4 * ATTB_trace + (float)num_nodes * float(num_nodes) - 2 * (TAT_sum_sum + BT_sum_sum);

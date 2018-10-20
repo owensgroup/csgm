@@ -25,8 +25,6 @@ __global__ void run_bidding(
 
             int start_idx = offsets[i];
             int end_idx   = offsets[i + 1];
-            // printf("i=%d | num_entries=%d\n", i, end_idx - start_idx);
-            // if(start_idx == end_idx) return;
 
             int top1_col;
             float top1_val = BIG_NEGATIVE;
@@ -71,10 +69,6 @@ __global__ void run_bidding(
                     top2_val = tmp_val;
                 }
             }
-
-            // if(top2_val == BIG_NEGATIVE) {
-
-            // }
 
             float bid = top1_val - top2_val + auction_eps;
             bids[num_nodes * top1_col + i] = bid;
