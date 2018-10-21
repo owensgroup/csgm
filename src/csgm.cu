@@ -53,9 +53,12 @@ int main(int argc, char** argv)
     std::cerr << "csgm: must specify `--num-seeds`" << std::endl;
     exit(1);
   }
-  int num_iters   = vm["num-iters"].as<int>();
-  float tolerance = vm["tolerance"].as<float>();
-  bool verbose    = vm["sgm-debug"].as<bool>();
+  int num_iters     = vm["num-iters"].as<int>();
+  bool verbose      = vm["sgm-debug"].as<bool>();
+  float tolerance   = vm["tolerance"].as<float>();
+  float auction_max_eps = vm["auction-max-eps"].as<float>();
+  float auction_min_eps = vm["auction-min-eps"].as<float>();
+  float auction_factor  = vm["auction-factor"].as<float>();
 
   graphblas::Descriptor desc;
   desc.loadArgs(vm);
@@ -129,12 +132,12 @@ int main(int argc, char** argv)
 
         d_person2item,
 
-        0.1,
-        0.1,
-        0.0,
+        auction_max_eps,
+        auction_min_eps,
+        auction_factor,
 
-        1,
-        int(verbose)
+        1,           // num_runs
+        int(verbose) // verbose
     );
 
 
@@ -210,7 +213,7 @@ int main(int argc, char** argv)
     }
 
     float f1 = ps_grad_P - ps_gradt_T;
-    num_diff = pow(num_nodes, 2) - ps_grad_P; // Number of disagreements (unweighted graph)
+    num_diff = a_num_edges + b_num_edges - 2 * ATTB_trace; // Number of disagreements (unweighted graph)
 
     if(verbose) {
       std::cerr << "APPB_trace = " << std::setprecision(9) << APPB_trace << std::endl;
@@ -229,11 +232,13 @@ int main(int argc, char** argv)
     }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
+      std::cerr << "alpha > 0" << std::endl;
       spmm_convex_combination(P, T, alpha, 1 - alpha);
       spmm_convex_combination(APB, ATB, alpha, 1 - alpha);
       spmm_convex_combination(AP, AT, alpha, 1 - alpha);
 
     } else if(f1 < 0) {
+      std::cerr << "f1 < 0" << std::endl;
       P->clear();
       AP->clear();
       APB->clear();

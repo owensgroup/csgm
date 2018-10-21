@@ -69,12 +69,16 @@ void parseArgsSGM(int argc, char**argv, po::variables_map& vm) {
         "True means show memory info")
 
     // SGM params
-    ("num-seeds", po::value<int>(),                                                   "number of seeds"      )
-    ("num-iters", po::value<int>()->default_value(20),                                "number of iterations" )
-    ("tolerance", po::value<float>()->default_value(1.0),                             "convergence tolerance")
-    ("A",         po::value<std::string>()->default_value((std::string)"data/A.mtx"), "path to A.mtx"        )
-    ("B",         po::value<std::string>()->default_value((std::string)"data/B.mtx"), "path to B.mtx"        )
-    ("sgm-debug", po::value<bool>()->default_value(false),                            "print SGM debug info" );
+    ("num-seeds",   po::value<int>(),                                                   "number of seeds"       )
+    ("num-iters",   po::value<int>()->default_value(20),                                "number of iterations"  )
+    ("tolerance",   po::value<float>()->default_value(1.0),                             "convergence tolerance" )
+    ("A",           po::value<std::string>()->default_value((std::string)"data/A.mtx"), "path to A.mtx"         )
+    ("B",           po::value<std::string>()->default_value((std::string)"data/B.mtx"), "path to B.mtx"         )
+    ("sgm-debug",   po::value<bool>()->default_value(false),                            "print SGM debug info"  )
+    ("auction-max-eps", po::value<float>()->default_value(1.0),                         "max auction epsilon"   )
+    ("auction-min-eps", po::value<float>()->default_value(1.0),                         "min auction epsilon"   )
+    ("auction-factor",  po::value<float>()->default_value(0.0),                         "epsilon scaling factor");
+
 
   po::store(po::parse_command_line(argc, argv, desc), vm);
   po::notify(vm);

@@ -1,6 +1,7 @@
 #ifndef __AUCTION_VARS
 #define EMPTY_COL -99
 #define BIG_NEGATIVE -999999
+#define TIEBREAKER // toggle on and off
 #endif
 
 __global__ void run_bidding(
@@ -38,8 +39,12 @@ __global__ void run_bidding(
                 tmp_val = -prices[col];
                 if(tmp_val >= top1_val) {
                     if(
-                        (tmp_val > top1_val) // ||
-                        // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
+#ifdef TIEBREAKER
+                        (tmp_val > top1_val) ||
+                        (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
+#else
+                        (tmp_val > top1_val)
+#endif
                     ) {
                         top2_val = top1_val;
                         top1_col = col;
@@ -58,8 +63,12 @@ __global__ void run_bidding(
 
                 if(tmp_val >= top1_val) {
                     if(
-                        (tmp_val > top1_val) // ||
-                        // (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
+#ifdef TIEBREAKER
+                        (tmp_val > top1_val) ||
+                        (rand[i * num_nodes + col] >= rand[i * num_nodes + top1_col]) // tiebreaker
+#else
+                        (tmp_val > top1_val)
+#endif
                     ) {
                         top2_val = top1_val;
                         top1_col = col;
