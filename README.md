@@ -6,6 +6,10 @@ Currently, only tested on undirected, unweighted graphs.
 
 #### Usage
 
+```
+git clone --recursive https://github.com/owensgroup/csgm
+```
+
 See `run.sh` for usage.
 
 #### Todo
