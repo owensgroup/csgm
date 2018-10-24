@@ -106,6 +106,16 @@ int main(int argc, char** argv)
   int BP_sum_num_values;
   int BT_sum_num_values;
 
+  AuctionData ad;
+  cudaMalloc((void **)&ad.d_numAssign,   1                     * sizeof(int)) ;
+  cudaMalloc((void **)&ad.d_item2person, num_nodes             * sizeof(int));
+  cudaMalloc((void **)&ad.d_person2item, num_nodes             * sizeof(int));
+  cudaMalloc((void **)&ad.d_prices,      num_nodes             * sizeof(float));
+  cudaMalloc((void **)&ad.d_sbids,       num_nodes             * sizeof(int));
+  cudaMalloc((void **)&ad.d_bids,        num_nodes * num_nodes * sizeof(float));
+  cudaMalloc((void **)&ad.d_rand,        num_nodes * num_nodes * sizeof(float));
+
+
   A->build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
   B->build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
   init_P(P, num_seeds);
@@ -114,12 +124,14 @@ int main(int argc, char** argv)
   easy_mxm(APB, AP, B, &desc);
 
   int* d_ascending;
-  int* d_person2item;
   float* d_ones;
   cudaMalloc((void **)&d_ones, num_nodes * sizeof(float));
   cudaMalloc((void **)&d_ascending, (num_nodes+1) * sizeof(int));
-  cudaMalloc((void **)&d_person2item, num_nodes * sizeof(int));
-  init_T(T, d_ascending, d_person2item, d_ones, num_nodes);
+  init_T(T, d_ascending, ad.d_person2item, d_ones, num_nodes);
+
+  curandGenerator_t gen;
+  curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+  curandSetPseudoRandomGeneratorSeed(gen, 123);
 
   GpuTimer iter_timer;
   GpuTimer total_timer;
@@ -144,18 +156,18 @@ int main(int argc, char** argv)
         APB->matrix_.sparse_.d_csrRowPtr_,
         APB->matrix_.sparse_.d_csrColInd_,
 
-        d_person2item,
-
         auction_max_eps,
         auction_min_eps,
         auction_factor,
 
-        1,           // num_runs
-        int(verbose) // verbose
+        1,            // num_runs
+        int(verbose), // verbose
+        gen,
+        ad
     );
 
 
-    cudaMemcpy(T->matrix_.sparse_.d_csrColInd_, d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(T->matrix_.sparse_.d_csrColInd_, ad.d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToDevice);
 
     // --------------------------
     // Matmuls
