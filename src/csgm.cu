@@ -92,6 +92,20 @@ int main(int argc, char** argv)
   FloatMatrix  _PB(num_nodes, num_nodes); FloatMatrix* PB  = &_PB;
   FloatMatrix  _TB(num_nodes, num_nodes); FloatMatrix* TB  = &_TB;
 
+  FloatVector AP_rowsum(num_nodes);
+  FloatVector AT_rowsum(num_nodes);
+  FloatVector B_rowsum(num_nodes);
+  FloatVector BP_sum(num_nodes);
+  FloatVector BT_sum(num_nodes);
+  FloatVector PAP_sum(num_nodes);
+  FloatVector PAT_sum(num_nodes);
+  FloatVector TAP_sum(num_nodes);
+  FloatVector TAT_sum(num_nodes);
+
+  int P_num_values;
+  int BP_sum_num_values;
+  int BT_sum_num_values;
+
   A->build(&a_row_indices, &a_col_indices, &a_values, a_num_edges, GrB_NULL);
   B->build(&b_row_indices, &b_col_indices, &b_values, b_num_edges, GrB_NULL);
   init_P(P, num_seeds);
@@ -164,20 +178,20 @@ int main(int argc, char** argv)
     graphblas::traceMxmTranspose(&ATPB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, PB, &desc);
     graphblas::traceMxmTranspose(&ATTB_trace, graphblas::PlusMultipliesSemiring<float>(), AT, TB, &desc);
 
-    FloatVector AP_rowsum(num_nodes); rowsum(&AP_rowsum,  AP, &desc);
-    FloatVector AT_rowsum(num_nodes); rowsum(&AT_rowsum,  AT, &desc);
-    FloatVector B_rowsum(num_nodes); rowsum( &B_rowsum,  B, &desc);
+    rowsum(&AP_rowsum,  AP, &desc);
+    rowsum(&AT_rowsum,  AT, &desc);
+    rowsum( &B_rowsum,  B, &desc);
 
-    FloatVector BP_sum(num_nodes); easy_vxm(&BP_sum, &B_rowsum, P, &desc);
-    FloatVector BT_sum(num_nodes); easy_vxm(&BT_sum, &B_rowsum, T, &desc);
-    FloatVector PAP_sum(num_nodes); easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
-    FloatVector PAT_sum(num_nodes); easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
-    FloatVector TAP_sum(num_nodes); easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
-    FloatVector TAT_sum(num_nodes); easy_mxv(&TAT_sum,  T, &AT_rowsum, &desc);
+    easy_vxm(&BP_sum, &B_rowsum, P, &desc);
+    easy_vxm(&BT_sum, &B_rowsum, T, &desc);
+    easy_mxv(&PAP_sum,  P, &AP_rowsum, &desc);
+    easy_mxv(&PAT_sum,  P, &AT_rowsum, &desc);
+    easy_mxv(&TAP_sum,  T, &AP_rowsum, &desc);
+    easy_mxv(&TAT_sum,  T, &AT_rowsum, &desc);
 
-    int P_num_values; P->nvals(&P_num_values);
-    int BP_sum_num_values; BP_sum.nvals(&BP_sum_num_values);
-    int BT_sum_num_values; BT_sum.nvals(&BT_sum_num_values);
+    P->nvals(&P_num_values);
+    BP_sum.nvals(&BP_sum_num_values);
+    BT_sum.nvals(&BT_sum_num_values);
 
     float P_sum      = sum_reduce(P->matrix_.sparse_.d_csrVal_, P_num_values);
     float BP_sum_sum = sum_reduce(BP_sum.vector_.sparse_.d_val_, BP_sum_num_values);

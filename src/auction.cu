@@ -36,16 +36,6 @@ int run_auction(
     int verbose
 )
 {
-    // float* h_data    = (float*)malloc(num_edges * sizeof(float));
-    // int*   h_offsets = (int*)malloc((num_nodes + 1) * sizeof(int));
-    // int*   h_columns = (int*)malloc(num_edges * sizeof(int));
-    // std::cerr << "num_edges=" << num_edges << std::endl;
-    // cudaMemcpy(h_columns, d_columns, num_edges * sizeof(int), cudaMemcpyDeviceToHost);
-    // cudaMemcpy(h_data, d_data, num_edges * sizeof(float), cudaMemcpyDeviceToHost);
-    // for(int i = 0; i < 20; i++) {
-    //     std::cerr << "h_columns[" << i << "]=" << h_columns[i] << std::endl;
-    //     std::cerr << "   h_data[" << i << "]=" << h_data[i] << std::endl;
-    // }
 
     int block = 1 + num_nodes / THREADS;
 
