@@ -36,13 +36,13 @@ int run_auction(
 
     curandGenerator_t &gen,
 
-    AuctionData ad
+    AuctionData &ad
 )
 {
     int block = 1 + num_nodes / THREADS;
     int h_numAssign = 0;
 
-    // curandSetPseudoRandomGeneratorSeed(gen, seed);
+    curandSetPseudoRandomGeneratorSeed(gen, 123); // To exactly match other implementations
     curandGenerateUniform(gen, ad.d_rand, num_nodes * num_nodes);
 
     for(int run_num = 0; run_num < num_runs; run_num++) {
@@ -91,10 +91,7 @@ int run_auction(
                 // if(counter > 1000) break;
 #endif
             }
-            if(verbose) {
-                std::cerr << "counter=" << counter << std::endl;
-            }
-
+            std::cerr << "auction_counter=" << counter << std::endl;
             auction_eps *= auction_factor;
         }
      }
