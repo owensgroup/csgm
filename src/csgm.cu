@@ -166,7 +166,6 @@ int main(int argc, char** argv)
         ad
     );
 
-
     cudaMemcpy(T->matrix_.sparse_.d_csrColInd_, ad.d_person2item, num_nodes * sizeof(int), cudaMemcpyDeviceToDevice);
 
     // --------------------------

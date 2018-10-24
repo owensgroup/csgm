@@ -97,8 +97,6 @@ int run_auction(
 
             auction_eps *= auction_factor;
         }
-
-        cudaThreadSynchronize();
      }
 
     return h_numAssign;
