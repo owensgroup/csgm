@@ -42,7 +42,7 @@ int run_auction(
     int block = 1 + num_nodes / THREADS;
     int h_numAssign = 0;
 
-    curandSetPseudoRandomGeneratorSeed(gen, 123); // To exactly match other implementations
+    // curandSetPseudoRandomGeneratorSeed(gen, 123); // To exactly match other implementations
     curandGenerateUniform(gen, ad.d_rand, num_nodes * num_nodes);
 
     for(int run_num = 0; run_num < num_runs; run_num++) {
