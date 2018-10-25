@@ -91,7 +91,9 @@ int run_auction(
                 // if(counter > 1000) break;
 #endif
             }
-            std::cerr << "auction_counter=" << counter << std::endl;
+            if(verbose) {
+                std::cerr << "auction_counter=" << counter << std::endl;
+            }
             auction_eps *= auction_factor;
         }
      }

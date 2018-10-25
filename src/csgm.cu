@@ -147,7 +147,6 @@ int main(int argc, char** argv)
     // Solve LAP
 
     int APB_num_entries; APB->nvals(&APB_num_entries);
-    std::cerr << "APB_num_entries=" << APB_num_entries << std::endl;
     run_auction(
         num_nodes,
         APB_num_entries,
@@ -257,13 +256,13 @@ int main(int argc, char** argv)
     }
 
     if((alpha > 0) && (alpha < tolerance) && (falpha > 0) && (falpha > f1)) {
-      std::cerr << "alpha > 0" << std::endl;
+      if(verbose) std::cerr << "alpha > 0" << std::endl;
       spmm_convex_combination(P, T, alpha, 1 - alpha);
       spmm_convex_combination(APB, ATB, alpha, 1 - alpha);
       spmm_convex_combination(AP, AT, alpha, 1 - alpha);
 
     } else if(f1 < 0) {
-      std::cerr << "f1 < 0" << std::endl;
+      if(verbose)  std::cerr << "f1 < 0" << std::endl;
       P->clear();
       AP->clear();
       APB->clear();

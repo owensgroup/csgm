@@ -1,7 +1,7 @@
 #ifndef __AUCTION_VARS
 #define EMPTY_COL -99
 #define BIG_NEGATIVE -999999
-// #define TIEBREAKER // toggle on and off
+#define TIEBREAKER // toggle on and off
 #endif
 
 __global__ void run_bidding(
