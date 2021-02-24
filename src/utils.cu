@@ -85,9 +85,9 @@ void spmm_convex_combination(
   cusparseHandle_t handle = 0;
   cusparseStatus_t status = cusparseCreate(&handle);
 
-  int n; A->nrows(&n);
-  int nvals_a; A->nvals(&nvals_a);
-  int nvals_b; B->nvals(&nvals_b);
+  int n       ; A->nrows(&n)       ;
+  int nvals_a ; A->nvals(&nvals_a) ;
+  int nvals_b ; B->nvals(&nvals_b) ;
 
   cusparseMatDescr_t desc_a;   cusparseCreateMatDescr(&desc_a);
   cusparseMatDescr_t desc_b;   cusparseCreateMatDescr(&desc_b);
@@ -99,14 +99,32 @@ void spmm_convex_combination(
   float* C_val;
 
   // nnzTotalDevHostPtr points to host memory
+  size_t bufferSizeInBytes;
+  char* buffer = NULL;
   int *nnzTotalDevHostPtr = &nvals_out;
   cusparseSetPointerMode(handle, CUSPARSE_POINTER_MODE_HOST);
   cudaMalloc((void**)&C_rowptr, sizeof(int) * (n + 1));
-  cusparseXcsrgeamNnz(
+  
+  // prepare buffer
+  cusparseScsrgeam2_bufferSizeExt(
+    handle, n, n,
+
+    &alpha, desc_a, nvals_a,
+    A->matrix_.sparse_.d_csrVal_, A->matrix_.sparse_.d_csrRowPtr_, A->matrix_.sparse_.d_csrColInd_,
+
+    &beta, desc_b, nvals_b,
+    B->matrix_.sparse_.d_csrVal_, B->matrix_.sparse_.d_csrRowPtr_, B->matrix_.sparse_.d_csrColInd_,
+
+    desc_out, C_val, C_rowptr, C_colind,
+    &bufferSizeInBytes
+  );
+  cudaMalloc((void**)&buffer, sizeof(char)*bufferSizeInBytes);
+  
+  cusparseXcsrgeam2Nnz(
     handle, n, n,
     desc_a, nvals_a, A->matrix_.sparse_.d_csrRowPtr_, A->matrix_.sparse_.d_csrColInd_,
     desc_b, nvals_b, B->matrix_.sparse_.d_csrRowPtr_, B->matrix_.sparse_.d_csrColInd_,
-    desc_out, C_rowptr, nnzTotalDevHostPtr
+    desc_out, C_rowptr, nnzTotalDevHostPtr, buffer
   );
 
   if (NULL != nnzTotalDevHostPtr){
@@ -118,16 +136,21 @@ void spmm_convex_combination(
   }
   cudaMalloc((void**)&C_colind, sizeof(int)   * nvals_out);
   cudaMalloc((void**)&C_val,     sizeof(float) * nvals_out);
-  cusparseScsrgeam(
+  cusparseScsrgeam2(
     handle, n, n,
 
-    &alpha, desc_a, nvals_a,
+    &alpha, 
+    desc_a, nvals_a,
     A->matrix_.sparse_.d_csrVal_, A->matrix_.sparse_.d_csrRowPtr_, A->matrix_.sparse_.d_csrColInd_,
 
-    &beta, desc_b, nvals_b,
+    &beta, 
+    desc_b, nvals_b,
     B->matrix_.sparse_.d_csrVal_, B->matrix_.sparse_.d_csrRowPtr_, B->matrix_.sparse_.d_csrColInd_,
 
-    desc_out, C_val, C_rowptr, C_colind
+    desc_out, 
+    C_val, C_rowptr, C_colind,
+    
+    buffer
   );
 
   A->clear();

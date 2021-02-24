@@ -18,7 +18,8 @@ csgm: src/*
 		-lboost_program_options \
 		-lcublas \
 		-lcusparse \
-		-lcurand
+		-lcurand \
+		-lnvToolsExt
 
 clean:
 	rm -f csgm

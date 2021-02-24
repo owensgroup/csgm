@@ -12,11 +12,12 @@ from scipy.io import mmwrite
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dim', type=int, default=4096)
-    parser.add_argument('--num-seeds', type=int, default=100)
-    parser.add_argument('--density', type=float, default=0.01)
-    parser.add_argument('--seed', type=int, default=123)
+    parser.add_argument('--dim',       type=int,   default=4096)
+    parser.add_argument('--num-seeds', type=int,   default=100)
+    parser.add_argument('--density',   type=float, default=0.01)
+    parser.add_argument('--seed',      type=int,   default=123)
     return parser.parse_args()
+
 
 if __name__ == "__main__":
     args = parse_args()
